@@ -23,6 +23,35 @@ body {
   font-size: 14px;
 }
 
+#authGate {
+  position: fixed;
+  inset: 0;
+  background: var(--bg);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#authGate.hidden { display: none; }
+.auth-box {
+  background: var(--panel);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 36px 32px;
+  width: 280px;
+  text-align: center;
+}
+.auth-title { font-size: 18px; font-weight: 700; margin-bottom: 6px; }
+.auth-sub { font-size: 13px; color: var(--muted); margin-bottom: 16px; }
+.auth-box input[type=password] {
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 14px;
+}
+.auth-error { color: var(--bad); font-size: 12px; margin-top: 10px; min-height: 16px; }
+
 header.topbar {
   background: var(--panel);
   border-bottom: 1px solid var(--border);

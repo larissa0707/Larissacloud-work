@@ -3,7 +3,13 @@
 
   var LS_OVERRIDES = 'xh_channel_overrides_v1';
   var LS_CACHE = 'xh_dataset_cache_v2';
-  var LS_CAMPAIGN_CACHE = 'xh_campaign_cache_v2';
+  var LS_PLATFORMS = 'xh_platforms_v1';
+  var LS_AUTH = 'xh_authed_v1';
+  var LS_GH_TOKEN = 'xh_gh_token_v1';
+  var AUTH_HASH = '409094ed5881f4489ea6e3685ed24a339da9a394f2bd70d5248c18a5a058d5ad';
+  var GH_OWNER = 'larissa0707';
+  var GH_REPO = 'Larissacloud-work';
+  var GH_DATA_PATH = 'data.json';
 
   var EC_KEYWORDS = [
     'momo', '蝦皮', 'shopee', '露天', 'ruten', 'pchome', '奇摩', 'yahoo',
@@ -21,8 +27,9 @@
   var expandedBrands = {}; // brand -> expanded in ranking table
   var overviewRange = 'all';
   var overviewCustomStart = null, overviewCustomEnd = null;
-  var campaignFiles = []; // [{name, sheets:[{sheet,idHeader,priceCols,rows}]}]
-  var activeCampaignPage = 0;
+  var platforms = []; // [{id, name, commissionPct, idHeader, priceCols, rows:[{product,id,prices,note}]}]
+  var activePlatformId = null;
+  var pendingPlatformAction = null; // {mode:'add', name, commissionPct} | {mode:'reimport', platformId}
 
   // ---------- utils ----------
   function ymToIndex(ym) {
@@ -52,6 +59,131 @@
     };
   }
   function el(id) { return document.getElementById(id); }
+
+  // ---------- auth gate ----------
+  async function sha256Hex(str) {
+    var enc = new TextEncoder().encode(str);
+    var buf = await crypto.subtle.digest('SHA-256', enc);
+    return Array.prototype.map.call(new Uint8Array(buf), function (b) { return b.toString(16).padStart(2, '0'); }).join('');
+  }
+
+  function isAuthed() { return localStorage.getItem(LS_AUTH) === '1'; }
+
+  function setupAuthGate() {
+    var gate = el('authGate');
+    if (isAuthed()) { gate.classList.add('hidden'); return; }
+    gate.classList.remove('hidden');
+    var input = el('authInput');
+    var errorEl = el('authError');
+    async function tryLogin() {
+      var val = input.value;
+      if (!val) return;
+      var hash = await sha256Hex(val);
+      if (hash === AUTH_HASH) {
+        localStorage.setItem(LS_AUTH, '1');
+        gate.classList.add('hidden');
+        boot();
+      } else {
+        errorEl.textContent = '密碼錯誤，請再試一次';
+        input.value = '';
+        input.focus();
+      }
+    }
+    el('authBtn').onclick = tryLogin;
+    input.onkeydown = function (e) { if (e.key === 'Enter') tryLogin(); };
+    input.focus();
+  }
+
+  // ---------- GitHub sync ----------
+  function utf8ToBase64(str) {
+    return btoa(unescape(encodeURIComponent(str)));
+  }
+
+  function getGithubToken(forcePrompt) {
+    var token = localStorage.getItem(LS_GH_TOKEN);
+    if (!token || forcePrompt) {
+      token = prompt('貼上你的 GitHub Personal Access Token（只會存在這台裝置的瀏覽器裡，不會上傳到別的地方）：', token || '');
+      if (!token) return null;
+      localStorage.setItem(LS_GH_TOKEN, token);
+    }
+    return token;
+  }
+
+  async function ghApi(path, token, options) {
+    options = options || {};
+    var resp = await fetch('https://api.github.com/repos/' + GH_OWNER + '/' + GH_REPO + path, Object.assign({
+      headers: Object.assign({ Authorization: 'Bearer ' + token, Accept: 'application/vnd.github+json' }, options.headers || {})
+    }, options));
+    return resp;
+  }
+
+  async function syncToGithub() {
+    if (!records.length) { alert('目前沒有已載入的銷售資料可以同步，請先匯入Excel檔案。'); return; }
+    var statusEl = el('githubSyncStatus');
+    var token = getGithubToken(false);
+    if (!token) return;
+    statusEl.textContent = '同步中...';
+    try {
+      var payload = { savedAt: new Date().toISOString(), records: records, excludedCount: excludedCount };
+      var content = utf8ToBase64(JSON.stringify(payload));
+
+      var refResp = await ghApi('/git/refs/heads/main', token);
+      if (refResp.status === 401) { token = getGithubToken(true); if (!token) return; refResp = await ghApi('/git/refs/heads/main', token); }
+      if (!refResp.ok) throw new Error('讀取分支失敗 (' + refResp.status + ')');
+      var refData = await refResp.json();
+      var commitSha = refData.object.sha;
+
+      var commitResp = await ghApi('/git/commits/' + commitSha, token);
+      if (!commitResp.ok) throw new Error('讀取commit失敗 (' + commitResp.status + ')');
+      var commitData = await commitResp.json();
+      var baseTreeSha = commitData.tree.sha;
+
+      var blobResp = await ghApi('/git/blobs', token, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: content, encoding: 'base64' })
+      });
+      if (!blobResp.ok) throw new Error('建立blob失敗 (' + blobResp.status + ')');
+      var blobData = await blobResp.json();
+
+      var treeResp = await ghApi('/git/trees', token, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ base_tree: baseTreeSha, tree: [{ path: GH_DATA_PATH, mode: '100644', type: 'blob', sha: blobData.sha }] })
+      });
+      if (!treeResp.ok) throw new Error('建立tree失敗 (' + treeResp.status + ')');
+      var treeData = await treeResp.json();
+
+      var newCommitResp = await ghApi('/git/commits', token, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: '同步銷售資料 ' + new Date().toLocaleString('zh-TW'), tree: treeData.sha, parents: [commitSha] })
+      });
+      if (!newCommitResp.ok) throw new Error('建立commit失敗 (' + newCommitResp.status + ')');
+      var newCommitData = await newCommitResp.json();
+
+      var updateRefResp = await ghApi('/git/refs/heads/main', token, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sha: newCommitData.sha })
+      });
+      if (!updateRefResp.ok) throw new Error('更新分支失敗 (' + updateRefResp.status + ')');
+
+      statusEl.textContent = '✅ 同步成功 ' + new Date().toLocaleString('zh-TW');
+    } catch (e) {
+      console.error('GitHub同步失敗', e);
+      statusEl.textContent = '❌ 同步失敗';
+      alert('同步到GitHub失敗：' + e.message + '\n\n請確認Token有效、且有這個repo的寫入權限（repo scope）。');
+    }
+  }
+
+  async function tryLoadRemoteSnapshot() {
+    try {
+      var resp = await fetch('data.json', { cache: 'no-store' });
+      if (!resp.ok) return false;
+      var data = await resp.json();
+      if (!data.records || !data.records.length) return false;
+      records = data.records;
+      excludedCount = data.excludedCount || 0;
+      return data.savedAt || true;
+    } catch (e) { return false; }
+  }
 
   // ---------- overrides persistence ----------
   function loadOverrides() {
@@ -939,81 +1071,146 @@
     return sheetsOut;
   }
 
-  async function handleCampaignFiles(fileList) {
-    if (!fileList || !fileList.length) return;
-    campaignFiles = [];
-    el('campaignStatusLine').textContent = '解析中...';
-    for (var i = 0; i < fileList.length; i++) {
-      var file = fileList[i];
-      try {
-        var buf = await file.arrayBuffer();
-        var wb = XLSX.read(buf, { type: 'array', cellDates: true });
-        var sheets = parseCampaignWorkbook(wb);
-        if (sheets.length) campaignFiles.push({ name: file.name, sheets: sheets });
-      } catch (e) {
-        console.error('讀取檔期檔失敗', file.name, e);
-        alert('讀取「' + file.name + '」失敗。\n' + e.message);
-      }
-    }
-    if (!campaignFiles.length) {
-      alert('沒有解析到檔期報價表，請確認檔案裡有一欄叫「品名」的表格。');
-      el('campaignStatusLine').textContent = '尚未載入資料';
-      return;
-    }
-    saveCampaignCache();
-    el('campaignStatusLine').textContent = '共載入 ' + campaignFiles.length + ' 個檔案';
-    renderCampaignTab();
-  }
-
   function marginClass(marginPct) {
     if (marginPct === null) return '';
     return marginPct >= 15 ? 'growth-up' : (marginPct >= 0 ? '' : 'growth-down');
   }
 
-  function campaignPages() {
-    var pages = [];
-    campaignFiles.forEach(function (file, fi) {
-      file.sheets.forEach(function (sheetResult, si) {
-        pages.push({ fi: fi, si: si, label: file.name.replace(/\.[^.]+$/, '') + ' — ' + sheetResult.sheet });
-      });
-    });
-    return pages;
+  function savePlatforms() {
+    try { localStorage.setItem(LS_PLATFORMS, JSON.stringify(platforms)); } catch (e) { }
+  }
+  function loadPlatforms() {
+    try {
+      var raw = localStorage.getItem(LS_PLATFORMS);
+      platforms = raw ? JSON.parse(raw) : [];
+    } catch (e) { platforms = []; }
+  }
+
+  function flattenParsedSheets(sheets) {
+    var idHeader = sheets[0].idHeader;
+    var priceCols = sheets[0].priceCols;
+    var rows = [];
+    sheets.forEach(function (s) { rows = rows.concat(s.rows); });
+    return { idHeader: idHeader, priceCols: priceCols, rows: rows };
+  }
+
+  function addPlatformFlow() {
+    var name = prompt('平台名稱（例如 momo、PCHOME、蝦皮）：');
+    if (!name || !name.trim()) return;
+    var commissionStr = prompt('這個平台的抽成%（純參考用，例如輸入 8 代表8%，不確定可以留空）：', '');
+    var commissionPct = null;
+    if (commissionStr && commissionStr.trim() !== '') {
+      var n = Number(commissionStr);
+      if (!isNaN(n)) commissionPct = n;
+    }
+    pendingPlatformAction = { mode: 'add', name: name.trim(), commissionPct: commissionPct };
+    el('campaignFileInput').value = '';
+    el('campaignFileInput').click();
+  }
+
+  function reimportPlatformFlow(id) {
+    pendingPlatformAction = { mode: 'reimport', platformId: id };
+    el('campaignFileInput').value = '';
+    el('campaignFileInput').click();
+  }
+
+  function renamePlatformFlow(id) {
+    var platform = platforms.find(function (p) { return p.id === id; });
+    if (!platform) return;
+    var name = prompt('平台名稱：', platform.name);
+    if (!name || !name.trim()) return;
+    var commissionStr = prompt('抽成%（純參考，可留空）：', (platform.commissionPct === null || platform.commissionPct === undefined) ? '' : String(platform.commissionPct));
+    var commissionPct = null;
+    if (commissionStr && commissionStr.trim() !== '') {
+      var n = Number(commissionStr);
+      if (!isNaN(n)) commissionPct = n;
+    }
+    platform.name = name.trim();
+    platform.commissionPct = commissionPct;
+    savePlatforms();
+    renderCampaignTab();
+  }
+
+  function removePlatformFlow(id) {
+    var platform = platforms.find(function (p) { return p.id === id; });
+    if (!platform) return;
+    if (!confirm('確定要刪除「' + platform.name + '」這個平台的所有資料嗎？此動作無法復原。')) return;
+    platforms = platforms.filter(function (p) { return p.id !== id; });
+    if (activePlatformId === id) activePlatformId = platforms.length ? platforms[0].id : null;
+    savePlatforms();
+    renderCampaignTab();
+  }
+
+  async function onCampaignFileChosen() {
+    var file = this.files[0];
+    var action = pendingPlatformAction;
+    pendingPlatformAction = null;
+    if (!file || !action) return;
+    try {
+      var buf = await file.arrayBuffer();
+      var wb = XLSX.read(buf, { type: 'array', cellDates: true });
+      var sheets = parseCampaignWorkbook(wb);
+      if (!sheets.length) { alert('沒有解析到任何品項，請確認檔案裡有一欄叫「品名」的表格。'); return; }
+      var flat = flattenParsedSheets(sheets);
+
+      if (action.mode === 'add') {
+        var id = 'p' + Date.now();
+        platforms.push({
+          id: id, name: action.name, commissionPct: action.commissionPct,
+          idHeader: flat.idHeader, priceCols: flat.priceCols, rows: flat.rows
+        });
+        activePlatformId = id;
+      } else {
+        var idx = platforms.findIndex(function (p) { return p.id === action.platformId; });
+        if (idx === -1) return;
+        var oldNoteMap = {};
+        platforms[idx].rows.forEach(function (r) { if (r.note) oldNoteMap[r.product] = r.note; });
+        flat.rows.forEach(function (r) { if (oldNoteMap[r.product]) r.note = oldNoteMap[r.product]; });
+        platforms[idx].idHeader = flat.idHeader;
+        platforms[idx].priceCols = flat.priceCols;
+        platforms[idx].rows = flat.rows;
+        activePlatformId = platforms[idx].id;
+      }
+      savePlatforms();
+      renderCampaignTab();
+    } catch (e) {
+      console.error('讀取檔期檔失敗', file.name, e);
+      alert('讀取「' + file.name + '」失敗。\n' + e.message);
+    }
   }
 
   function renderCampaignTab() {
     var container = el('campaignResults');
     if (!container) return;
-    if (!campaignFiles.length) {
-      container.innerHTML = '<div class="empty-state" style="padding:30px;margin-top:14px"><div class="big">🗂️</div>尚未載入檔期報價表</div>';
+    if (!platforms.length) {
+      container.innerHTML = '<div class="empty-state" style="padding:30px;margin-top:14px"><div class="big">🗂️</div>尚未新增任何平台，按上面「+ 新增平台」開始</div>';
       return;
     }
-    var pages = campaignPages();
-    if (!pages.length) {
-      container.innerHTML = '<div class="empty-state" style="padding:30px;margin-top:14px"><div class="big">🗂️</div>尚未解析到任何品項</div>';
-      return;
-    }
-    if (activeCampaignPage >= pages.length) activeCampaignPage = 0;
+    if (!platforms.find(function (p) { return p.id === activePlatformId; })) activePlatformId = platforms[0].id;
 
     var stats = computeProductStats();
     var codeIndex = buildProductCodeIndex(stats);
+    var platform = platforms.find(function (p) { return p.id === activePlatformId; });
 
     var html = '<div class="chip-group" style="margin-bottom:14px;flex-wrap:wrap">';
-    pages.forEach(function (p, i) {
-      html += '<button class="chip camp-subtab' + (i === activeCampaignPage ? ' active' : '') + '" data-idx="' + i + '">' + escapeHtml(p.label) + '</button>';
+    platforms.forEach(function (p) {
+      var commissionLabel = (p.commissionPct === null || p.commissionPct === undefined) ? '' : (' (抽成' + p.commissionPct + '%)');
+      html += '<button class="chip camp-subtab' + (p.id === activePlatformId ? ' active' : '') + '" data-id="' + p.id + '">' + escapeHtml(p.name) + commissionLabel + '</button>';
     });
     html += '</div>';
 
-    var page = pages[activeCampaignPage];
-    var fi = page.fi, si = page.si;
-    var file = campaignFiles[fi];
-    var sheetResult = file.sheets[si];
+    html += '<div class="toolbar" style="margin-bottom:10px">' +
+      '<button class="btn secondary" id="reimportPlatformBtn" data-id="' + platform.id + '">🔄 重新匯入「' + escapeHtml(platform.name) + '」</button>' +
+      '<button class="btn secondary" id="renamePlatformBtn" data-id="' + platform.id + '">✏️ 改名稱／抽成%</button>' +
+      '<button class="btn secondary" id="removePlatformBtn" data-id="' + platform.id + '" style="color:#dc2626;border-color:#dc2626">🗑 刪除此平台</button>' +
+      '</div>';
 
     html += '<div style="overflow-x:auto"><table class="data camp-table"><thead><tr><th>商品</th>' +
-      (sheetResult.idHeader ? '<th>' + escapeHtml(sheetResult.idHeader) + '</th>' : '') +
+      (platform.idHeader ? '<th>' + escapeHtml(platform.idHeader) + '</th>' : '') +
       '<th class="num">近90天銷量／營收</th>';
-    sheetResult.priceCols.forEach(function (h) { html += '<th class="num">' + escapeHtml(h) + '</th>'; });
+    platform.priceCols.forEach(function (h) { html += '<th class="num">' + escapeHtml(h) + '</th>'; });
     html += '<th>備註／決定</th></tr></thead><tbody>';
-    sheetResult.rows.forEach(function (row, ri) {
+    platform.rows.forEach(function (row, ri) {
       var matchName = matchProduct(row.product, codeIndex, stats);
       var histCell;
       if (matchName) {
@@ -1023,22 +1220,21 @@
         histCell = '<span style="color:#9ca3af">查無歷史(可能新品)</span>';
       }
       html += '<tr><td>' + escapeHtml(row.product) + '</td>' +
-        (sheetResult.idHeader ? '<td>' + escapeHtml(row.id || '') + '</td>' : '') +
+        (platform.idHeader ? '<td>' + escapeHtml(row.id || '') + '</td>' : '') +
         '<td class="num">' + histCell + '</td>';
       row.prices.forEach(function (p, pi) {
-        if (!p.isNumericPrice) {
-          var declined = p.raw ? '<span class="tag excluded">' + escapeHtml(String(p.raw)) + '</span>' : '<span style="color:#d1d5db">—</span>';
-          html += '<td class="num">' + declined + '</td>';
-        } else {
-          html += '<td class="num">' +
-            '<input type="number" class="camp-price-input" style="width:78px;text-align:right" ' +
-            'data-fi="' + fi + '" data-si="' + si + '" data-ri="' + ri + '" data-pi="' + pi + '" value="' + p.price + '">' +
-            (p.marginPct !== null ? ('<br><span class="margin-note ' + marginClass(p.marginPct) + '" style="font-size:11px">毛利' + p.marginPct.toFixed(1) + '%</span>') : '<br><span class="margin-note" style="font-size:11px;color:#9ca3af">(無成本可比)</span>') +
-            '</td>';
+        var val = p.isNumericPrice ? p.price : '';
+        var marginHtml = '';
+        if (val !== '') {
+          marginHtml = p.marginPct !== null
+            ? ('<br><span class="margin-note ' + marginClass(p.marginPct) + '" style="font-size:11px">毛利' + p.marginPct.toFixed(1) + '%</span>')
+            : '<br><span class="margin-note" style="font-size:11px;color:#9ca3af">(無成本可比)</span>';
         }
+        html += '<td class="num"><input type="number" class="camp-price-input" style="width:78px;text-align:right" ' +
+          'data-platform="' + platform.id + '" data-ri="' + ri + '" data-pi="' + pi + '" value="' + val + '">' + marginHtml + '</td>';
       });
       html += '<td><input type="text" class="camp-note-input" style="width:140px" placeholder="例如：已提報1799" ' +
-        'data-fi="' + fi + '" data-si="' + si + '" data-ri="' + ri + '" value="' + escapeHtml(row.note || '') + '"></td>';
+        'data-platform="' + platform.id + '" data-ri="' + ri + '" value="' + escapeHtml(row.note || '') + '"></td>';
       html += '</tr>';
     });
     html += '</tbody></table></div>';
@@ -1046,11 +1242,14 @@
     container.innerHTML = html;
 
     Array.prototype.forEach.call(container.querySelectorAll('.camp-subtab'), function (btn) {
-      btn.onclick = function () {
-        activeCampaignPage = +btn.getAttribute('data-idx');
-        renderCampaignTab();
-      };
+      btn.onclick = function () { activePlatformId = btn.getAttribute('data-id'); renderCampaignTab(); };
     });
+    var reimportBtn = container.querySelector('#reimportPlatformBtn');
+    if (reimportBtn) reimportBtn.onclick = function () { reimportPlatformFlow(reimportBtn.getAttribute('data-id')); };
+    var renameBtn = container.querySelector('#renamePlatformBtn');
+    if (renameBtn) renameBtn.onclick = function () { renamePlatformFlow(renameBtn.getAttribute('data-id')); };
+    var removeBtn = container.querySelector('#removePlatformBtn');
+    if (removeBtn) removeBtn.onclick = function () { removePlatformFlow(removeBtn.getAttribute('data-id')); };
     Array.prototype.forEach.call(container.querySelectorAll('.camp-price-input'), function (inp) {
       inp.oninput = debounce(function () { onCampaignPriceEdit(inp); }, 300);
     });
@@ -1060,106 +1259,106 @@
   }
 
   function onCampaignPriceEdit(inp) {
-    var fi = +inp.getAttribute('data-fi'), si = +inp.getAttribute('data-si'),
-      ri = +inp.getAttribute('data-ri'), pi = +inp.getAttribute('data-pi');
-    var p = campaignFiles[fi].sheets[si].rows[ri].prices[pi];
-    var newPrice = Number(inp.value);
-    if (inp.value === '' || isNaN(newPrice)) return;
-    p.price = newPrice;
-    p.raw = newPrice;
-    if (p.cost !== null && p.cost !== 0 && newPrice !== 0) {
-      p.marginPct = (newPrice - p.cost) / newPrice * 100;
-    } else {
-      p.marginPct = null;
-    }
+    var platformId = inp.getAttribute('data-platform'), ri = +inp.getAttribute('data-ri'), pi = +inp.getAttribute('data-pi');
+    var platform = platforms.find(function (p) { return p.id === platformId; });
+    if (!platform) return;
+    var p = platform.rows[ri].prices[pi];
     var noteSpan = inp.parentElement.querySelector('.margin-note');
-    if (noteSpan) {
-      if (p.marginPct !== null) {
-        noteSpan.textContent = '毛利' + p.marginPct.toFixed(1) + '%';
-        noteSpan.className = 'margin-note ' + marginClass(p.marginPct);
-      } else {
-        noteSpan.textContent = '(無成本可比)';
-        noteSpan.className = 'margin-note';
-        noteSpan.style.color = '#9ca3af';
+
+    if (inp.value === '') {
+      p.isNumericPrice = false; p.price = null; p.raw = ''; p.marginPct = null;
+      if (noteSpan) {
+        var br = noteSpan.previousElementSibling;
+        if (br && br.tagName === 'BR') br.remove();
+        noteSpan.remove();
       }
+      savePlatforms();
+      return;
     }
-    saveCampaignCache();
+
+    var newPrice = Number(inp.value);
+    if (isNaN(newPrice)) return;
+    p.isNumericPrice = true; p.price = newPrice; p.raw = newPrice;
+    p.marginPct = (p.cost !== null && p.cost !== 0) ? (newPrice - p.cost) / newPrice * 100 : null;
+
+    if (!noteSpan) {
+      inp.insertAdjacentHTML('afterend', '<br><span class="margin-note"></span>');
+      noteSpan = inp.parentElement.querySelector('.margin-note');
+    }
+    if (p.marginPct !== null) {
+      noteSpan.textContent = '毛利' + p.marginPct.toFixed(1) + '%';
+      noteSpan.className = 'margin-note ' + marginClass(p.marginPct);
+      noteSpan.style.color = '';
+    } else {
+      noteSpan.textContent = '(無成本可比)';
+      noteSpan.className = 'margin-note';
+      noteSpan.style.color = '#9ca3af';
+    }
+    savePlatforms();
   }
 
   function onCampaignNoteEdit(inp) {
-    var fi = +inp.getAttribute('data-fi'), si = +inp.getAttribute('data-si'), ri = +inp.getAttribute('data-ri');
-    campaignFiles[fi].sheets[si].rows[ri].note = inp.value;
-    saveCampaignCache();
-  }
-
-  function saveCampaignCache() {
-    try { localStorage.setItem(LS_CAMPAIGN_CACHE, JSON.stringify(campaignFiles)); } catch (e) { }
+    var platformId = inp.getAttribute('data-platform'), ri = +inp.getAttribute('data-ri');
+    var platform = platforms.find(function (p) { return p.id === platformId; });
+    if (!platform) return;
+    platform.rows[ri].note = inp.value;
+    savePlatforms();
   }
 
   function exportCampaignExcel() {
-    if (!campaignFiles.length) { alert('目前沒有已載入的檔期報價表可以匯出。'); return; }
+    if (!platforms.length) { alert('目前沒有任何平台的資料可以匯出。'); return; }
     var stats = computeProductStats();
     var codeIndex = buildProductCodeIndex(stats);
     var wb = XLSX.utils.book_new();
     var usedSheetNames = {};
-    campaignFiles.forEach(function (file) {
-      file.sheets.forEach(function (sheetResult) {
-        var header = ['商品'];
-        if (sheetResult.idHeader) header.push(sheetResult.idHeader);
-        header.push('近90天銷量', '近90天營收');
-        sheetResult.priceCols.forEach(function (h) { header.push(h); header.push(h + '_成本'); header.push(h + '_毛利率'); });
-        header.push('備註/決定');
-        var aoa = [header];
-        var marginFormulaSpots = []; // {excelRow(0-based data row incl header offset applied later), priceCol, costCol, marginCol, marginPct}
+    platforms.forEach(function (platform) {
+      var header = ['商品'];
+      if (platform.idHeader) header.push(platform.idHeader);
+      header.push('近90天銷量', '近90天營收');
+      platform.priceCols.forEach(function (h) { header.push(h); header.push(h + '_成本'); header.push(h + '_毛利率'); });
+      header.push('備註/決定');
+      var aoa = [header];
+      var marginFormulaSpots = [];
 
-        sheetResult.rows.forEach(function (row, rIdx) {
-          var matchName = matchProduct(row.product, codeIndex, stats);
-          var s = matchName ? stats[matchName] : null;
-          var line = [row.product];
-          if (sheetResult.idHeader) line.push(row.id || '');
-          line.push(s ? s.recentQty : '', s ? s.recentAmount : '');
-          row.prices.forEach(function (p) {
-            var priceCol = line.length;
-            line.push(p.isNumericPrice ? p.price : (p.raw || ''));
-            var costCol = line.length;
-            line.push(p.cost !== null ? p.cost : '');
-            var marginCol = line.length;
-            line.push(p.marginPct !== null ? Math.round(p.marginPct * 10) / 10 / 100 : '');
-            if (p.isNumericPrice && p.cost !== null) {
-              marginFormulaSpots.push({ dataRowIdx: rIdx, priceCol: priceCol, costCol: costCol, marginCol: marginCol });
-            }
-          });
-          line.push(row.note || '');
-          aoa.push(line);
+      platform.rows.forEach(function (row, rIdx) {
+        var matchName = matchProduct(row.product, codeIndex, stats);
+        var s = matchName ? stats[matchName] : null;
+        var line = [row.product];
+        if (platform.idHeader) line.push(row.id || '');
+        line.push(s ? s.recentQty : '', s ? s.recentAmount : '');
+        row.prices.forEach(function (p) {
+          var priceCol = line.length;
+          line.push(p.isNumericPrice ? p.price : (p.raw || ''));
+          var costCol = line.length;
+          line.push(p.cost !== null ? p.cost : '');
+          var marginCol = line.length;
+          line.push(p.marginPct !== null ? Math.round(p.marginPct * 10) / 10 / 100 : '');
+          if (p.isNumericPrice && p.cost !== null) {
+            marginFormulaSpots.push({ dataRowIdx: rIdx, priceCol: priceCol, costCol: costCol, marginCol: marginCol });
+          }
         });
-
-        var ws = XLSX.utils.aoa_to_sheet(aoa);
-        marginFormulaSpots.forEach(function (spot) {
-          var excelRow = spot.dataRowIdx + 1; // 0-based row index in sheet (row 0 = header)
-          var priceRef = XLSX.utils.encode_cell({ r: excelRow, c: spot.priceCol });
-          var costRef = XLSX.utils.encode_cell({ r: excelRow, c: spot.costCol });
-          var marginRef = XLSX.utils.encode_cell({ r: excelRow, c: spot.marginCol });
-          ws[marginRef] = { t: 'n', f: '(' + priceRef + '-' + costRef + ')/' + priceRef, z: '0.0%', v: ws[marginRef] ? ws[marginRef].v : 0 };
-        });
-
-        var baseName = (file.name.replace(/\.[^.]+$/, '') + '_' + sheetResult.sheet).slice(0, 28) || 'Sheet';
-        var sheetName = baseName, n = 1;
-        while (usedSheetNames[sheetName]) { sheetName = (baseName + '_' + (++n)).slice(0, 31); }
-        usedSheetNames[sheetName] = true;
-        XLSX.utils.book_append_sheet(wb, ws, sheetName);
+        line.push(row.note || '');
+        aoa.push(line);
       });
+
+      var ws = XLSX.utils.aoa_to_sheet(aoa);
+      marginFormulaSpots.forEach(function (spot) {
+        var excelRow = spot.dataRowIdx + 1;
+        var priceRef = XLSX.utils.encode_cell({ r: excelRow, c: spot.priceCol });
+        var costRef = XLSX.utils.encode_cell({ r: excelRow, c: spot.costCol });
+        var marginRef = XLSX.utils.encode_cell({ r: excelRow, c: spot.marginCol });
+        ws[marginRef] = { t: 'n', f: '(' + priceRef + '-' + costRef + ')/' + priceRef, z: '0.0%', v: ws[marginRef] ? ws[marginRef].v : 0 };
+      });
+
+      var baseName = platform.name.slice(0, 28) || 'Sheet';
+      var sheetName = baseName, n = 1;
+      while (usedSheetNames[sheetName]) { sheetName = (baseName + '_' + (++n)).slice(0, 31); }
+      usedSheetNames[sheetName] = true;
+      XLSX.utils.book_append_sheet(wb, ws, sheetName);
     });
     var today = new Date();
     var stamp = today.getFullYear() + String(today.getMonth() + 1).padStart(2, '0') + String(today.getDate()).padStart(2, '0');
     XLSX.writeFile(wb, '檔期選品規劃_匯出_' + stamp + '.xlsx');
-  }
-
-  function loadCachedCampaign() {
-    try {
-      var raw = localStorage.getItem(LS_CAMPAIGN_CACHE);
-      if (!raw) return;
-      campaignFiles = JSON.parse(raw) || [];
-    } catch (e) { campaignFiles = []; }
   }
 
   // ---------- tabs ----------
@@ -1176,7 +1375,10 @@
   }
 
   // ---------- boot ----------
-  function init() {
+  var booted = false;
+  async function boot() {
+    if (booted) return;
+    booted = true;
     loadOverrides();
     setupTabs();
 
@@ -1189,19 +1391,27 @@
       renderAll();
     };
 
-    el('campaignParseBtn').onclick = function () { handleCampaignFiles(el('campaignFileInput').files); };
+    el('addPlatformBtn').onclick = addPlatformFlow;
+    el('campaignFileInput').onchange = onCampaignFileChosen;
     el('campaignExportBtn').onclick = exportCampaignExcel;
     el('winbackChannelType').onchange = renderWinback;
     el('winbackMinSpend').oninput = debounce(renderWinback, 250);
     el('winbackMinIdleDays').oninput = debounce(renderWinback, 250);
     el('winbackSearch').oninput = debounce(renderWinback, 250);
+    el('githubSyncBtn').onclick = syncToGithub;
 
-    loadCachedCampaign();
-    if (campaignFiles.length) {
-      el('campaignStatusLine').textContent = '共載入 ' + campaignFiles.length + ' 個檔案（快取）';
-      renderCampaignTab();
-    } else {
-      renderCampaignTab();
+    loadPlatforms();
+    renderCampaignTab();
+    if (platforms.length) {
+      el('campaignStatusLine').textContent = '共 ' + platforms.length + ' 個平台';
+    }
+
+    var remoteSavedAt = await tryLoadRemoteSnapshot();
+    if (remoteSavedAt) {
+      renderAll();
+      var remoteWhen = typeof remoteSavedAt === 'string' ? new Date(remoteSavedAt).toLocaleString('zh-TW') : '';
+      el('statusLine').textContent += remoteWhen ? ('　|　已自動載入GitHub同步資料（' + remoteWhen + '）') : '　|　已自動載入GitHub同步資料';
+      return;
     }
 
     var cached = loadCachedDataset();
@@ -1210,6 +1420,11 @@
       var when = typeof cached === 'string' ? new Date(cached).toLocaleString('zh-TW') : '';
       if (when) el('statusLine').textContent += '　|　資料快取於 ' + when;
     }
+  }
+
+  function init() {
+    setupAuthGate();
+    if (isAuthed()) boot();
   }
 
   document.addEventListener('DOMContentLoaded', init);

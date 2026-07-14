@@ -2,17 +2,29 @@
 <html lang="zh-Hant">
 <head>
 <meta charset="utf-8">
-<title>小樺資訊 行銷分析</title>
+<title>Larissa work day</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 
+<div id="authGate">
+  <div class="auth-box">
+    <div class="auth-title">🔒 Larissa work day</div>
+    <div class="auth-sub">請輸入密碼</div>
+    <input type="password" id="authInput" placeholder="密碼" autocomplete="off">
+    <button class="btn" id="authBtn" style="width:100%;margin-top:10px">登入</button>
+    <div class="auth-error" id="authError"></div>
+  </div>
+</div>
+
 <header class="topbar">
-  <h1>📊 小樺資訊 行銷分析</h1>
+  <h1>☁️ Larissa work day</h1>
   <input type="file" id="fileInput" multiple accept=".xlsx">
   <button class="btn" id="parseBtn">載入 / 重新解析</button>
+  <button class="btn secondary" id="githubSyncBtn">☁️ 同步到GitHub</button>
   <span class="spacer"></span>
+  <span class="status-line" id="githubSyncStatus"></span>
   <span class="status-line" id="statusLine">尚未載入資料</span>
 </header>
 
@@ -110,17 +122,18 @@
       <div class="panel">
         <h2>檔期選品規劃</h2>
         <div class="sub">
-          匯入 momo／PCHOME 等平台的「檔期報價表」（例如「2026年7月活動品項MOMO 小樺.xlsx」「2026年6月PCHOME.xls」）。
+          每個電商平台獨立管理一個分頁：按「+ 新增平台」建立一次（取平台名稱、填抽成%參考、匯入一份範例檔期報價表定義欄位），
+          之後平台有新的檔期報價表，直接在該平台分頁按「重新匯入」更新內容即可，不影響其他平台。
           系統會自動辨識品名、成本欄、各檔期價格欄，算出每個檔期價格的毛利／毛利率，並比對你已載入的銷售歷史，
-          顯示這個商品最近的銷售量，幫你判斷這個商品適不適合、划不划算推這個檔期。
-          價格欄位可以直接點一下修改（毛利率會即時重算），最右邊「備註/決定」欄可以打字記錄，這台電腦下次打開會記住。
+          顯示這個商品最近的銷售量，幫你判斷划不划算推這個檔期。
+          價格欄位可以直接點一下修改（毛利率會即時重算），最右邊「備註/決定」欄可以打字記錄，這台電腦下次打開會記住，重新匯入時也會保留。
           改完可以按「匯出 Excel」存成新檔案（含調整後價格、毛利率、近期銷量、備註）。
         </div>
         <div class="toolbar">
-          <input type="file" id="campaignFileInput" multiple accept=".xlsx,.xls">
-          <button class="btn" id="campaignParseBtn">載入檔期報價表</button>
+          <button class="btn" id="addPlatformBtn">+ 新增平台</button>
           <button class="btn secondary" id="campaignExportBtn">匯出 Excel（含調整後價格／備註）</button>
           <span class="status-line" id="campaignStatusLine"></span>
+          <input type="file" id="campaignFileInput" accept=".xlsx,.xls" style="display:none">
         </div>
         <div id="campaignResults"></div>
       </div>
