@@ -211,6 +211,11 @@
     return m ? m[1] : '其他/未分類';
   }
 
+  function getBrandDisplay(rawBrand) {
+    if (/^MOIN/i.test(rawBrand)) return 'MOIN';
+    return rawBrand;
+  }
+
   function parseDateCell(v) {
     if (!v) return null;
     if (v instanceof Date && !isNaN(v)) return v;
@@ -375,6 +380,10 @@
       }
       return true;
     });
+  }
+
+  function groupKeyOf(r, groupBy) {
+    return groupBy === 'brand' ? getBrandDisplay(r.brand) : r.product;
   }
 
   function sumBy(list, keyFn) {
@@ -580,7 +589,7 @@
   }
 
   function renderBrandSplitChart(recs) {
-    var map = sumBy(recs, function (r) { return r.brand; });
+    var map = sumBy(recs, function (r) { return getBrandDisplay(r.brand); });
     var arr = Object.values(map).sort(function (a, b) { return b.amount - a.amount; });
     var grandTotal = arr.reduce(function (s, x) { return s + x.amount; }, 0);
     var top = arr.slice(0, 7);
@@ -690,8 +699,8 @@
 
     var curRecs = filterRecords({ startIdx: sIdx, endIdx: eIdx, channelType: channelType });
     var prevRecs = filterRecords({ startIdx: prevS, endIdx: prevE, channelType: channelType });
-    var curMap = sumBy(curRecs, function (r) { return r[groupBy]; });
-    var prevMap = sumBy(prevRecs, function (r) { return r[groupBy]; });
+    var curMap = sumBy(curRecs, function (r) { return groupKeyOf(r, groupBy); });
+    var prevMap = sumBy(prevRecs, function (r) { return groupKeyOf(r, groupBy); });
 
     var rows = Object.values(curMap).map(function (c) {
       var prev = prevMap[c.key];
@@ -741,8 +750,8 @@
         '</td><td class="num">$' + fmtMoney(r.amount) + '</td><td class="num">$' + fmtMoney(r.prevAmount) +
         '</td>' + growthCell(r.growth) + '</tr>';
       if (expanded) {
-        var prodCurMap = sumBy(curRecs.filter(function (x) { return x.brand === r.key; }), function (x) { return x.product; });
-        var prodPrevMap = sumBy(prevRecs.filter(function (x) { return x.brand === r.key; }), function (x) { return x.product; });
+        var prodCurMap = sumBy(curRecs.filter(function (x) { return getBrandDisplay(x.brand) === r.key; }), function (x) { return x.product; });
+        var prodPrevMap = sumBy(prevRecs.filter(function (x) { return getBrandDisplay(x.brand) === r.key; }), function (x) { return x.product; });
         var prodRows = Object.values(prodCurMap).sort(function (a, b) { return b.amount - a.amount; });
         prodRows.forEach(function (pr) {
           var prev = prodPrevMap[pr.key];
@@ -784,7 +793,7 @@
   function populateTrendTargets() {
     var groupBy = el('trendGroupBy').value;
     var recs = filterRecords({});
-    var map = sumBy(recs, function (r) { return r[groupBy]; });
+    var map = sumBy(recs, function (r) { return groupKeyOf(r, groupBy); });
     var arr = Object.values(map).sort(function (a, b) { return b.amount - a.amount; });
     var sel = el('trendTarget');
     var prev = sel.value;
@@ -805,7 +814,7 @@
       var ym = indexToYm(i);
       labels.push(ym);
       var recs = records.filter(function (r) {
-        return r.ym === ym && r[groupBy] === target && getChannelType(r.channel) !== 'excluded';
+        return r.ym === ym && groupKeyOf(r, groupBy) === target && getChannelType(r.channel) !== 'excluded';
       });
       qtyData.push(recs.reduce(function (s, x) { return s + x.qty; }, 0));
       amountData.push(Math.round(recs.reduce(function (s, x) { return s + x.amount; }, 0)));
