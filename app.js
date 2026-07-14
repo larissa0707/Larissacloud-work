@@ -1105,15 +1105,8 @@
   }
 
   function addPlatformFlow() {
-    var name = prompt('平台名稱（例如 momo、PCHOME、蝦皮）：');
-    if (!name || !name.trim()) return;
-    var commissionStr = prompt('這個平台的抽成%（純參考用，例如輸入 8 代表8%，不確定可以留空）：', '');
-    var commissionPct = null;
-    if (commissionStr && commissionStr.trim() !== '') {
-      var n = Number(commissionStr);
-      if (!isNaN(n)) commissionPct = n;
-    }
-    pendingPlatformAction = { mode: 'add', name: name.trim(), commissionPct: commissionPct };
+    // 先開檔案選擇視窗（直接使用者手勢，不會被瀏覽器擋），選完檔再問名稱/抽成
+    pendingPlatformAction = { mode: 'add' };
     el('campaignFileInput').value = '';
     el('campaignFileInput').click();
   }
@@ -1164,9 +1157,18 @@
       var flat = flattenParsedSheets(sheets);
 
       if (action.mode === 'add') {
+        var defaultName = file.name.replace(/\.[^.]+$/, '');
+        var name = prompt('平台名稱（例如 momo、PCHOME、蝦皮）：', defaultName);
+        if (!name || !name.trim()) return;
+        var commissionStr = prompt('這個平台的抽成%（純參考用，例如輸入 8 代表8%，不確定可以留空）：', '');
+        var commissionPct = null;
+        if (commissionStr && commissionStr.trim() !== '') {
+          var cn = Number(commissionStr);
+          if (!isNaN(cn)) commissionPct = cn;
+        }
         var id = 'p' + Date.now();
         platforms.push({
-          id: id, name: action.name, commissionPct: action.commissionPct,
+          id: id, name: name.trim(), commissionPct: commissionPct,
           idHeader: flat.idHeader, priceCols: flat.priceCols, rows: flat.rows
         });
         activePlatformId = id;
