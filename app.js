@@ -102,7 +102,9 @@
   function getGithubToken(forcePrompt) {
     var token = localStorage.getItem(LS_GH_TOKEN);
     if (!token || forcePrompt) {
-      token = prompt('貼上你的 GitHub Personal Access Token（只會存在這台裝置的瀏覽器裡，不會上傳到別的地方）：', token || '');
+      var entered = prompt('貼上你的 GitHub Personal Access Token（開頭通常是 github_pat_ 或 ghp_；只會存在這台裝置，不會給別人）：', '');
+      if (entered === null) return null;
+      token = entered.trim();
       if (!token) return null;
       localStorage.setItem(LS_GH_TOKEN, token);
     }
@@ -111,10 +113,21 @@
 
   async function ghApi(path, token, options) {
     options = options || {};
-    var resp = await fetch('https://api.github.com/repos/' + GH_OWNER + '/' + GH_REPO + path, Object.assign({
-      headers: Object.assign({ Authorization: 'Bearer ' + token, Accept: 'application/vnd.github+json' }, options.headers || {})
-    }, options));
+    var headers = Object.assign({
+      Authorization: 'Bearer ' + token,
+      Accept: 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28'
+    }, options.headers || {});
+    // 注意：headers 必須最後套用，否則會被 options 自己的 headers 蓋掉，導致寫入請求少了 Authorization → 401
+    var finalOpts = Object.assign({}, options, { headers: headers });
+    var resp = await fetch('https://api.github.com/repos/' + GH_OWNER + '/' + GH_REPO + path, finalOpts);
     return resp;
+  }
+
+  function handleAuthFailure(statusEl) {
+    localStorage.removeItem(LS_GH_TOKEN);
+    statusEl.textContent = '❌ 授權碼無效';
+    alert('授權碼(Token)無效或沒有寫入權限。\n\n請再按一次「☁️ 同步到GitHub」，重新貼上授權碼，注意：\n1. 要貼完整（開頭 github_pat_，結尾不要漏字）\n2. 前後不要有多餘空白\n3. 若還是不行，回GitHub重新產生一把，確認 Contents 設為 Read and write');
   }
 
   async function syncToGithub() {
@@ -128,7 +141,6 @@
       var content = utf8ToBase64(JSON.stringify(payload));
 
       var refResp = await ghApi('/git/refs/heads/main', token);
-      if (refResp.status === 401) { token = getGithubToken(true); if (!token) return; refResp = await ghApi('/git/refs/heads/main', token); }
       if (!refResp.ok) throw new Error('讀取分支失敗 (' + refResp.status + ')');
       var refData = await refResp.json();
       var commitSha = refData.object.sha;
@@ -142,6 +154,7 @@
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: content, encoding: 'base64' })
       });
+      if (blobResp.status === 401 || blobResp.status === 403) { handleAuthFailure(statusEl); return; }
       if (!blobResp.ok) throw new Error('建立blob失敗 (' + blobResp.status + ')');
       var blobData = await blobResp.json();
 
@@ -149,6 +162,7 @@
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ base_tree: baseTreeSha, tree: [{ path: GH_DATA_PATH, mode: '100644', type: 'blob', sha: blobData.sha }] })
       });
+      if (treeResp.status === 401 || treeResp.status === 403) { handleAuthFailure(statusEl); return; }
       if (!treeResp.ok) throw new Error('建立tree失敗 (' + treeResp.status + ')');
       var treeData = await treeResp.json();
 
@@ -156,6 +170,7 @@
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: '同步銷售資料 ' + new Date().toLocaleString('zh-TW'), tree: treeData.sha, parents: [commitSha] })
       });
+      if (newCommitResp.status === 401 || newCommitResp.status === 403) { handleAuthFailure(statusEl); return; }
       if (!newCommitResp.ok) throw new Error('建立commit失敗 (' + newCommitResp.status + ')');
       var newCommitData = await newCommitResp.json();
 
@@ -163,6 +178,7 @@
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sha: newCommitData.sha })
       });
+      if (updateRefResp.status === 401 || updateRefResp.status === 403) { handleAuthFailure(statusEl); return; }
       if (!updateRefResp.ok) throw new Error('更新分支失敗 (' + updateRefResp.status + ')');
 
       statusEl.textContent = '✅ 同步成功 ' + new Date().toLocaleString('zh-TW');
