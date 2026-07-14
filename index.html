@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>小樺資訊 行銷分析</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="topbar">
+  <h1>📊 小樺資訊 行銷分析</h1>
+  <input type="file" id="fileInput" multiple accept=".xlsx">
+  <button class="btn" id="parseBtn">載入 / 重新解析</button>
+  <span class="spacer"></span>
+  <span class="status-line" id="statusLine">尚未載入資料</span>
+</header>
+
+<nav class="tabs" id="tabs">
+  <button data-page="overview" class="active">總覽</button>
+  <button data-page="ranking">商品／品牌排行</button>
+  <button data-page="trend">商品趨勢細節</button>
+  <button data-page="campaign">檔期選品規劃</button>
+  <button data-page="winback">客戶回購提醒</button>
+  <button data-page="channels">通路分類設定</button>
+</nav>
+
+<main>
+
+  <div id="emptyState" class="empty-state">
+    <div class="big">📁</div>
+    <div>請點右上角「選擇檔案」，選取 2024銷售.xlsx／2025銷售.xlsx／2026銷售.xlsx 等年度銷售明細檔（可一次多選），再按「載入 / 重新解析」。</div>
+    <div style="margin-top:6px;font-size:12px">資料只會在你的電腦上處理，不會上傳到任何地方。</div>
+  </div>
+
+  <div id="appBody" style="display:none">
+
+    <!-- 總覽 -->
+    <section class="page active" id="page-overview">
+      <div class="kpi-row" id="kpiRow"></div>
+
+      <div class="panel">
+        <h2>月度營收趨勢 — 電商 vs 實體／經銷</h2>
+        <div class="sub">堆疊長條 + 兩通路各自營收（跨所有已載入年度）</div>
+        <div class="chart-wrap"><canvas id="chartMonthlyTrend"></canvas></div>
+      </div>
+
+      <div class="two-col">
+        <div class="panel">
+          <h2>通路類型佔比（依所選期間）</h2>
+          <div class="toolbar" id="overviewRangeToolbar"></div>
+          <div class="chart-wrap short"><canvas id="chartChannelSplit"></canvas></div>
+        </div>
+        <div class="panel">
+          <h2>品牌營收佔比（依所選期間）</h2>
+          <div class="chart-wrap short"><canvas id="chartBrandSplit"></canvas></div>
+          <div id="brandSplitTable" style="margin-top:10px"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 排行 -->
+    <section class="page" id="page-ranking">
+      <div class="panel">
+        <h2>商品／品牌排行榜</h2>
+        <div class="sub">選擇期間，系統會自動抓「等長度的前一期」做成長率比較（例如選近3個月，就跟再往前3個月比）</div>
+        <div class="toolbar">
+          <div class="chip-group" id="rankPreset"></div>
+          <label>起始月 <input type="month" id="rankStart"></label>
+          <label>結束月 <input type="month" id="rankEnd"></label>
+          <label>分組 <select id="rankGroupBy">
+            <option value="brand" selected>依品牌</option>
+            <option value="product">依商品</option>
+          </select></label>
+          <label>通路 <select id="rankChannelType">
+            <option value="all">全部通路</option>
+            <option value="ec">只看電商</option>
+            <option value="phys">只看實體／經銷</option>
+          </select></label>
+          <label>最低營收(篩雜訊) <input type="number" id="rankMinRevenue" value="0" style="width:90px"></label>
+          <input type="text" class="search-box" id="rankSearch" placeholder="搜尋商品/品牌名稱...">
+        </div>
+        <div class="table-scroll">
+          <table class="data" id="rankTable">
+            <thead></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- 趨勢細節 -->
+    <section class="page" id="page-trend">
+      <div class="panel">
+        <h2>單一商品／品牌 歷史月度趨勢</h2>
+        <div class="sub">用來看季節性、成長或衰退的走勢</div>
+        <div class="toolbar">
+          <label>類型 <select id="trendGroupBy">
+            <option value="product">商品</option>
+            <option value="brand">品牌</option>
+          </select></label>
+          <label>選擇 <select id="trendTarget" style="min-width:340px"></select></label>
+        </div>
+        <div class="chart-wrap"><canvas id="chartTrendDetail"></canvas></div>
+      </div>
+    </section>
+
+    <!-- 檔期選品規劃 -->
+    <section class="page" id="page-campaign">
+      <div class="panel">
+        <h2>檔期選品規劃</h2>
+        <div class="sub">
+          匯入 momo／PCHOME 等平台的「檔期報價表」（例如「2026年7月活動品項MOMO 小樺.xlsx」「2026年6月PCHOME.xls」）。
+          系統會自動辨識品名、成本欄、各檔期價格欄，算出每個檔期價格的毛利／毛利率，並比對你已載入的銷售歷史，
+          顯示這個商品最近的銷售量，幫你判斷這個商品適不適合、划不划算推這個檔期。
+          價格欄位可以直接點一下修改（毛利率會即時重算），最右邊「備註/決定」欄可以打字記錄，這台電腦下次打開會記住。
+          改完可以按「匯出 Excel」存成新檔案（含調整後價格、毛利率、近期銷量、備註）。
+        </div>
+        <div class="toolbar">
+          <input type="file" id="campaignFileInput" multiple accept=".xlsx,.xls">
+          <button class="btn" id="campaignParseBtn">載入檔期報價表</button>
+          <button class="btn secondary" id="campaignExportBtn">匯出 Excel（含調整後價格／備註）</button>
+          <span class="status-line" id="campaignStatusLine"></span>
+        </div>
+        <div id="campaignResults"></div>
+      </div>
+    </section>
+
+    <!-- 客戶回購提醒 -->
+    <section class="page" id="page-winback">
+      <div class="panel">
+        <h2>客戶回購提醒／流失名單</h2>
+        <div class="sub">
+          依「客戶/供應商名稱」欄彙總每個客戶的累計消費、購買次數、最後購買日期。
+          適合用在有實際往來對象的通路（經銷商、店家、特定客戶），大型電商平台（momo/蝦皮等）本身不是單一客戶，建議篩掉。
+          最下面「距今天數」愈大代表愈久沒下單，可以考慮主動聯繫。
+        </div>
+        <div class="toolbar">
+          <label>通路類型 <select id="winbackChannelType">
+            <option value="phys">只看實體／經銷（建議）</option>
+            <option value="all">全部通路</option>
+            <option value="ec">只看電商平台</option>
+          </select></label>
+          <label>最低累計消費 <input type="number" id="winbackMinSpend" value="0" style="width:100px"></label>
+          <label>至少幾天沒下單 <input type="number" id="winbackMinIdleDays" value="0" style="width:90px"></label>
+          <input type="text" class="search-box" id="winbackSearch" placeholder="搜尋客戶名稱...">
+        </div>
+        <div class="table-scroll">
+          <table class="data" id="winbackTable">
+            <thead></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- 通路設定 -->
+    <section class="page" id="page-channels">
+      <div class="panel">
+        <h2>通路分類設定</h2>
+        <div class="sub">系統依關鍵字自動猜測「電商」或「實體／經銷」，猜錯或有新通路時可在這裡手動調整，會記住在這台電腦上（下次開啟自動套用）。</div>
+        <div class="toolbar">
+          <input type="text" class="search-box" id="channelSearch" placeholder="搜尋通路名稱...">
+          <button class="btn secondary" id="resetOverrides">清除所有手動設定</button>
+        </div>
+        <div class="table-scroll">
+          <table class="data" id="channelTable">
+            <thead>
+              <tr><th>通路／客戶名稱</th><th class="num">總金額</th><th class="num">交易筆數</th><th>分類</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+  </div>
+</main>
+
+<footer class="note">資料僅於本機瀏覽器解析，不會上傳、不需要網路（除首次載入圖表函式庫外可離線使用）。</footer>
+
+<script src="vendor/xlsx.full.min.js"></script>
+<script src="vendor/chart.umd.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
