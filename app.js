@@ -213,6 +213,7 @@
 
   function getBrandDisplay(rawBrand) {
     if (/^MOIN/i.test(rawBrand)) return 'MOIN';
+    if (/^PAIPAI/i.test(rawBrand)) return 'PAIPAI';
     return rawBrand;
   }
 
