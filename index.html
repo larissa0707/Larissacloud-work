@@ -6,6 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="stylesheet" href="styles.css">
 <link rel="stylesheet" href="study.css">
+<link rel="stylesheet" href="notes.css">
 </head>
 <body>
 
@@ -37,6 +38,7 @@
   <button data-page="winback">客戶回購提醒</button>
   <button data-page="channels">通路分類設定</button>
   <button data-page="study">配置表背誦</button>
+  <button data-page="notes">筆記</button>
 </nav>
 
 <main>
@@ -226,6 +228,62 @@
       </div>
     </section>
 
+    <!-- 筆記 -->
+    <section class="page" id="page-notes">
+      <div class="nt-wrap">
+        <div class="nt-sidebar">
+          <div class="nt-sidebar-head">
+            <button class="nt-btn nt-primary" id="nt-newBtn" style="width:100%">＋ 新增筆記</button>
+          </div>
+          <input type="text" class="nt-search" id="nt-search" placeholder="搜尋筆記...">
+          <div class="nt-list" id="nt-list"></div>
+        </div>
+        <div class="nt-main">
+          <div class="nt-editorArea" id="nt-editorArea">
+            <div class="nt-toolbar" id="nt-toolbar">
+              <button class="nt-tbtn" data-nt-cmd="bold" title="粗體"><b>B</b></button>
+              <button class="nt-tbtn" data-nt-cmd="italic" title="斜體"><i>I</i></button>
+              <button class="nt-tbtn" data-nt-cmd="underline" title="底線"><u>U</u></button>
+              <span class="nt-tsep"></span>
+              <button class="nt-tbtn" data-nt-block="H3" title="標題">H</button>
+              <button class="nt-tbtn" data-nt-block="P" title="內文">¶</button>
+              <span class="nt-tsep"></span>
+              <button class="nt-tbtn" data-nt-cmd="insertUnorderedList" title="項目符號">• 列表</button>
+              <button class="nt-tbtn" data-nt-cmd="insertOrderedList" title="編號清單">1. 列表</button>
+              <span class="nt-tsep"></span>
+              <button class="nt-tbtn" id="nt-imgBtn" title="插入圖片（轉存為WebP）">🖼 圖片</button>
+              <button class="nt-tbtn" id="nt-drawBtn" title="手寫／畫圖">✏️ 手寫</button>
+              <span class="nt-spacer"></span>
+              <span class="nt-savedhint" id="nt-savedHint"></span>
+              <button class="nt-btn" id="nt-deleteBtn">🗑 刪除筆記</button>
+              <button class="nt-btn nt-secondary" id="nt-syncBtn">☁️ 同步筆記到GitHub</button>
+            </div>
+            <input type="text" class="nt-title" id="nt-titleInput" placeholder="無標題筆記">
+            <div class="nt-editor" id="nt-editor" contenteditable="true" data-placeholder="開始輸入筆記、直接貼上圖片（Ctrl+V），或按上方「✏️ 手寫」用滑鼠/觸控/手寫筆畫圖……"></div>
+          </div>
+          <div class="nt-no-note" id="nt-noNote" style="display:none">← 選一則筆記，或按左上角「＋ 新增筆記」</div>
+        </div>
+      </div>
+      <input type="file" id="nt-fileInput" accept="image/*" multiple style="display:none">
+
+      <div class="nt-drawModal nt-hidden" id="nt-drawModal">
+        <div class="nt-drawPanel">
+          <div class="nt-drawToolbar">
+            <span class="nt-swatches" id="nt-swatches"></span>
+            <input type="color" id="nt-colorPicker" value="#1e293b" title="自訂顏色">
+            <span class="nt-brushLabel">筆刷</span>
+            <input type="range" id="nt-brushSize" min="1" max="24" value="4">
+            <button class="nt-tbtn" id="nt-undoBtn">↩ 復原</button>
+            <button class="nt-tbtn" id="nt-clearBtn">🗑 清空</button>
+            <span class="nt-spacer"></span>
+            <button class="nt-btn" id="nt-drawCancelBtn">取消</button>
+            <button class="nt-btn nt-primary" id="nt-drawInsertBtn">插入筆記</button>
+          </div>
+          <div class="nt-canvasWrap"><canvas class="nt-canvas" id="nt-canvas"></canvas></div>
+        </div>
+      </div>
+    </section>
+
   </div>
 </main>
 
@@ -235,5 +293,6 @@
 <script src="vendor/chart.umd.min.js"></script>
 <script src="app.js"></script>
 <script src="study.js"></script>
+<script src="notes.js"></script>
 </body>
 </html>

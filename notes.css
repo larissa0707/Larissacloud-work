@@ -1,0 +1,96 @@
+/* 筆記區（Notion 風）— 所有選擇器限定在 #page-notes 底下，
+   自訂屬性定義在 #page-notes 上而非 :root，避免和 styles.css / study.css 互相覆蓋。 */
+#page-notes {
+  --nt-bg: #f8fafc; --nt-card: #fff; --nt-line: #e2e8f0; --nt-ink: #1e293b; --nt-sub: #64748b; --nt-mut: #94a3b8;
+  --nt-indigo: #4f46e5; --nt-accent-soft: #eef2ff;
+  --nt-radius: 12px;
+  --nt-shadow: 0 1px 3px rgba(15, 23, 42, .06);
+}
+#page-notes .nt-wrap {
+  display: flex; align-items: stretch; min-height: 620px;
+  background: var(--nt-card); border: 1px solid var(--nt-line); border-radius: var(--nt-radius);
+  box-shadow: var(--nt-shadow); overflow: hidden;
+}
+
+/* sidebar */
+#page-notes .nt-sidebar {
+  width: 240px; flex: none; border-right: 1px solid var(--nt-line); background: var(--nt-bg);
+  display: flex; flex-direction: column;
+}
+#page-notes .nt-sidebar-head { padding: 12px 12px 8px; }
+#page-notes .nt-search { margin: 0 12px 8px; padding: 7px 10px; border: 1px solid var(--nt-line); border-radius: 8px; font-size: 13px; font-family: inherit; }
+#page-notes .nt-list { flex: 1; overflow-y: auto; padding: 0 8px 12px; }
+#page-notes .nt-item {
+  display: flex; flex-direction: column; gap: 2px; padding: 9px 10px; border-radius: 8px; cursor: pointer;
+  margin-bottom: 2px; color: var(--nt-ink);
+}
+#page-notes .nt-item:hover { background: #eef1f6; }
+#page-notes .nt-item.nt-active { background: var(--nt-accent-soft); }
+#page-notes .nt-item .nt-item-title { font-size: 13.5px; font-weight: 600; color: var(--nt-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#page-notes .nt-item .nt-item-meta { font-size: 11px; color: var(--nt-mut); }
+#page-notes .nt-empty-list { padding: 20px 12px; font-size: 12.5px; color: var(--nt-mut); text-align: center; }
+
+/* main editor column */
+#page-notes .nt-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+#page-notes .nt-editorArea { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+#page-notes .nt-toolbar {
+  display: flex; align-items: center; gap: 4px; flex-wrap: wrap; padding: 8px 14px;
+  border-bottom: 1px solid var(--nt-line); background: var(--nt-card); position: sticky; top: 0; z-index: 2;
+}
+#page-notes .nt-tbtn {
+  border: 1px solid transparent; background: transparent; color: var(--nt-sub); border-radius: 6px;
+  padding: 6px 9px; font-size: 13px; cursor: pointer; font-family: inherit; line-height: 1;
+}
+#page-notes .nt-tbtn:hover { background: var(--nt-bg); border-color: var(--nt-line); color: var(--nt-ink); }
+#page-notes .nt-tbtn.nt-active { background: var(--nt-accent-soft); color: var(--nt-indigo); border-color: #c7d2fe; }
+#page-notes .nt-tsep { width: 1px; height: 18px; background: var(--nt-line); margin: 0 4px; }
+#page-notes .nt-spacer { flex: 1; }
+#page-notes .nt-savedhint { font-size: 11.5px; color: var(--nt-mut); white-space: nowrap; }
+#page-notes .nt-btn {
+  border: 1px solid var(--nt-line); background: var(--nt-card); color: var(--nt-sub); border-radius: 8px;
+  padding: 7px 12px; font-size: 12.5px; font-weight: 600; cursor: pointer; font-family: inherit; white-space: nowrap;
+}
+#page-notes .nt-btn.nt-primary { background: var(--nt-indigo); color: #fff; border-color: var(--nt-indigo); }
+#page-notes .nt-btn.nt-secondary:hover { background: var(--nt-accent-soft); color: var(--nt-indigo); border-color: var(--nt-indigo); }
+#page-notes .nt-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+#page-notes .nt-title {
+  border: 0; outline: 0; font-size: 22px; font-weight: 800; color: var(--nt-ink); padding: 18px 20px 4px;
+  font-family: inherit; background: transparent;
+}
+#page-notes .nt-title::placeholder { color: var(--nt-mut); font-weight: 700; }
+#page-notes .nt-editor {
+  flex: 1; overflow-y: auto; padding: 8px 20px 28px; font-size: 14.5px; line-height: 1.75; color: var(--nt-ink); outline: 0;
+}
+#page-notes .nt-editor:empty::before { content: attr(data-placeholder); color: var(--nt-mut); }
+#page-notes .nt-editor img { max-width: 100%; border-radius: 8px; margin: 6px 0; display: block; }
+#page-notes .nt-editor ul, #page-notes .nt-editor ol { padding-left: 22px; margin: 6px 0; }
+#page-notes .nt-editor h3 { font-size: 17px; margin: 14px 0 6px; }
+#page-notes .nt-editor p { margin: 0 0 8px; }
+#page-notes .nt-no-note { display: flex; align-items: center; justify-content: center; flex: 1; color: var(--nt-mut); font-size: 13.5px; }
+
+/* drawing modal */
+#page-notes .nt-drawModal {
+  position: fixed; inset: 0; background: rgba(15, 23, 42, .55); z-index: 200;
+  display: flex; align-items: center; justify-content: center; padding: 24px;
+}
+#page-notes .nt-drawModal.nt-hidden { display: none; }
+#page-notes .nt-drawPanel {
+  background: var(--nt-card); border-radius: 14px; box-shadow: 0 12px 40px rgba(0, 0, 0, .3);
+  width: min(920px, 100%); max-width: 100%; display: flex; flex-direction: column; overflow: hidden;
+}
+#page-notes .nt-drawToolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 14px; border-bottom: 1px solid var(--nt-line); }
+#page-notes .nt-swatches { display: flex; gap: 5px; }
+#page-notes .nt-swatch { width: 20px; height: 20px; border-radius: 50%; border: 1px solid rgba(0, 0, 0, .1); cursor: pointer; padding: 0; }
+#page-notes .nt-swatch.nt-active { outline: 2px solid var(--nt-indigo); outline-offset: 2px; }
+#page-notes .nt-canvasWrap { background: repeating-conic-gradient(#f1f5f9 0% 25%, #fff 0% 50%) 0 0 / 20px 20px; touch-action: none; }
+#page-notes .nt-canvas { display: block; width: 100%; height: 460px; touch-action: none; cursor: crosshair; }
+#page-notes input[type=range]#nt-brushSize { width: 100px; }
+#page-notes .nt-brushLabel { font-size: 12px; color: var(--nt-sub); }
+
+@media (max-width: 760px) {
+  #page-notes .nt-wrap { flex-direction: column; min-height: 0; }
+  #page-notes .nt-sidebar { width: 100%; max-height: 220px; border-right: 0; border-bottom: 1px solid var(--nt-line); }
+  #page-notes .nt-canvas { height: 320px; }
+}
+#page-notes button:focus-visible, #page-notes input:focus-visible, #page-notes [contenteditable]:focus-visible { outline: 2px solid var(--nt-indigo); outline-offset: 2px; }
