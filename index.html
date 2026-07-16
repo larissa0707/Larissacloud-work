@@ -5,6 +5,7 @@
 <title>Larissa work day</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="study.css">
 </head>
 <body>
 
@@ -35,6 +36,7 @@
   <button data-page="campaign">檔期選品規劃</button>
   <button data-page="winback">客戶回購提醒</button>
   <button data-page="channels">通路分類設定</button>
+  <button data-page="study">配置表背誦</button>
 </nav>
 
 <main>
@@ -187,6 +189,43 @@
       </div>
     </section>
 
+    <!-- 配置表背誦 -->
+    <section class="page" id="page-study">
+      <div class="sq-wrap">
+        <div class="sq-eyebrow">PAIPAI · MOIN</div>
+        <h1 class="sq-h1">配置表背誦</h1>
+        <div class="sq-lead">背「型號 → 方案（晶片）・前後鏡頭・GPS」。翻卡標記熟記，測驗驗收。進度存在本機。</div>
+
+        <div class="sq-row">
+          <button class="sq-btn" data-sqcat="汽車">汽車</button>
+          <button class="sq-btn" data-sqcat="機車">機車</button>
+          <button class="sq-btn" data-sqcat="全部">全部</button>
+          <div class="sq-sep"></div>
+          <button class="sq-btn sq-sm" data-sqtier="全部">全分級</button>
+          <button class="sq-btn sq-sm" data-sqtier="高">高成本</button>
+          <button class="sq-btn sq-sm" data-sqtier="中">中成本</button>
+          <button class="sq-btn sq-sm" data-sqtier="低">低成本</button>
+          <label class="sq-chk"><input type="checkbox" id="sq-disc">含已停產</label>
+          <span class="sq-prog" id="sq-prog"></span>
+        </div>
+
+        <div class="sq-tabs">
+          <button class="sq-tab" data-sqmode="card">翻卡</button>
+          <button class="sq-tab" data-sqmode="quiz">測驗</button>
+          <button class="sq-tab" data-sqmode="browse">瀏覽</button>
+          <button class="sq-tab" data-sqmode="glossary">名詞</button>
+          <button class="sq-tab" data-sqmode="ref">對照</button>
+        </div>
+
+        <div id="sq-view"></div>
+
+        <div class="sq-footnote">
+          資料來源：PAIPAI/MOIN 各型號配置表＋《商品功能解析手冊（新人版）》。成本為內部成本（元），分級：低 ≤1000、中 1001–2000、高 &gt;2000。
+          TX1000、MX647D、GT50XW、P12XW、P580XW、M30XW 於成本表未單列，顯示為「無成本」。
+        </div>
+      </div>
+    </section>
+
   </div>
 </main>
 
@@ -195,5 +234,6 @@
 <script src="vendor/xlsx.full.min.js"></script>
 <script src="vendor/chart.umd.min.js"></script>
 <script src="app.js"></script>
+<script src="study.js"></script>
 </body>
 </html>
