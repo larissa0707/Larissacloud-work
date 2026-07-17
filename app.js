@@ -204,7 +204,20 @@
       if (updateRefResp.status === 401 || updateRefResp.status === 403) { handleAuthFailure(statusEl); return; }
       if (!updateRefResp.ok) throw new Error('更新分支失敗 (' + updateRefResp.status + ') ' + (await ghErrorMsg(updateRefResp)));
 
-      statusEl.textContent = '✅ 同步成功 ' + new Date().toLocaleString('zh-TW');
+      // 順便把筆記也同步上去，讓使用者按一顆就好（筆記是另一個檔案 notes.json，不會互相蓋掉）
+      var noteMsg = '';
+      if (window.XH_NOTES && window.XH_NOTES.count() > 0) {
+        statusEl.textContent = '銷售資料已上傳，同步筆記中...';
+        try {
+          await window.XH_NOTES.sync();
+          noteMsg = '（含筆記）';
+        } catch (ne) {
+          console.error('筆記同步失敗', ne);
+          noteMsg = '（筆記同步失敗，請到筆記分頁單獨再試）';
+        }
+      }
+
+      statusEl.textContent = '✅ 同步成功' + noteMsg + ' ' + new Date().toLocaleString('zh-TW');
     } catch (e) {
       console.error('GitHub同步失敗', e);
       statusEl.textContent = '❌ 同步失敗';

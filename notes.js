@@ -463,4 +463,10 @@
 
   document.addEventListener('DOMContentLoaded', boot);
   if (document.readyState === 'complete' || document.readyState === 'interactive') boot();
+
+  // 讓上方工具列的「同步到GitHub」可以一併把筆記帶上去，不用另外進筆記分頁按一次
+  window.XH_NOTES = {
+    sync: syncNotesToGithub,
+    count: function () { return notes.length; }
+  };
 })();
