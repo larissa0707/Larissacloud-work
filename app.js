@@ -130,6 +130,10 @@
     alert('授權碼(Token)無效或沒有寫入權限。\n\n請再按一次「☁️ 同步到GitHub」，重新貼上授權碼，注意：\n1. 要貼完整（開頭 github_pat_，結尾不要漏字）\n2. 前後不要有多餘空白\n3. 若還是不行，回GitHub重新產生一把，確認 Contents 設為 Read and write');
   }
 
+  async function ghErrorMsg(resp) {
+    try { var j = await resp.json(); return j.message || JSON.stringify(j); } catch (e) { return ''; }
+  }
+
   async function syncToGithub() {
     if (!records.length) { alert('目前沒有已載入的銷售資料可以同步，請先匯入Excel檔案。'); return; }
     var statusEl = el('githubSyncStatus');
@@ -155,7 +159,7 @@
         body: JSON.stringify({ content: content, encoding: 'base64' })
       });
       if (blobResp.status === 401 || blobResp.status === 403) { handleAuthFailure(statusEl); return; }
-      if (!blobResp.ok) throw new Error('建立blob失敗 (' + blobResp.status + ')');
+      if (!blobResp.ok) throw new Error('建立blob失敗 (' + blobResp.status + ') ' + (await ghErrorMsg(blobResp)));
       var blobData = await blobResp.json();
 
       var treeResp = await ghApi('/git/trees', token, {
@@ -163,7 +167,7 @@
         body: JSON.stringify({ base_tree: baseTreeSha, tree: [{ path: GH_DATA_PATH, mode: '100644', type: 'blob', sha: blobData.sha }] })
       });
       if (treeResp.status === 401 || treeResp.status === 403) { handleAuthFailure(statusEl); return; }
-      if (!treeResp.ok) throw new Error('建立tree失敗 (' + treeResp.status + ')');
+      if (!treeResp.ok) throw new Error('建立tree失敗 (' + treeResp.status + ') ' + (await ghErrorMsg(treeResp)));
       var treeData = await treeResp.json();
 
       var newCommitResp = await ghApi('/git/commits', token, {
@@ -171,21 +175,21 @@
         body: JSON.stringify({ message: '同步銷售資料 ' + new Date().toLocaleString('zh-TW'), tree: treeData.sha, parents: [commitSha] })
       });
       if (newCommitResp.status === 401 || newCommitResp.status === 403) { handleAuthFailure(statusEl); return; }
-      if (!newCommitResp.ok) throw new Error('建立commit失敗 (' + newCommitResp.status + ')');
+      if (!newCommitResp.ok) throw new Error('建立commit失敗 (' + newCommitResp.status + ') ' + (await ghErrorMsg(newCommitResp)));
       var newCommitData = await newCommitResp.json();
 
       var updateRefResp = await ghApi('/git/refs/heads/main', token, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sha: newCommitData.sha })
+        body: JSON.stringify({ sha: newCommitData.sha, force: true })
       });
       if (updateRefResp.status === 401 || updateRefResp.status === 403) { handleAuthFailure(statusEl); return; }
-      if (!updateRefResp.ok) throw new Error('更新分支失敗 (' + updateRefResp.status + ')');
+      if (!updateRefResp.ok) throw new Error('更新分支失敗 (' + updateRefResp.status + ') ' + (await ghErrorMsg(updateRefResp)));
 
       statusEl.textContent = '✅ 同步成功 ' + new Date().toLocaleString('zh-TW');
     } catch (e) {
       console.error('GitHub同步失敗', e);
       statusEl.textContent = '❌ 同步失敗';
-      alert('同步到GitHub失敗：' + e.message + '\n\n請確認Token有效、且有這個repo的寫入權限（repo scope）。');
+      alert('同步到GitHub失敗：\n' + e.message);
     }
   }
 
