@@ -90,11 +90,23 @@
             <option value="brand" selected>依品牌</option>
             <option value="product">依商品</option>
           </select></label>
-          <label>通路 <select id="rankChannelType">
-            <option value="all">全部通路</option>
-            <option value="ec">只看電商</option>
-            <option value="phys">只看實體／經銷</option>
-          </select></label>
+          <div class="ch-picker">
+            <label>通路 <button type="button" class="ch-btn" id="rankChannelBtn">全部通路 ▾</button></label>
+            <div class="ch-panel" id="rankChannelPanel" hidden>
+              <div class="ch-presets">
+                <button type="button" class="chip" data-chpreset="all">全部通路</button>
+                <button type="button" class="chip" data-chpreset="ec">只看電商</button>
+                <button type="button" class="chip" data-chpreset="phys">只看實體／經銷</button>
+              </div>
+              <div class="ch-tools">
+                <input type="text" class="search-box" id="rankChannelSearch" placeholder="搜尋通路...">
+                <button type="button" class="ch-mini" id="rankChannelAll">全選</button>
+                <button type="button" class="ch-mini" id="rankChannelNone">清除</button>
+              </div>
+              <div class="ch-list" id="rankChannelList"></div>
+              <div class="ch-foot"><button type="button" class="btn" id="rankChannelDone">完成</button></div>
+            </div>
+          </div>
           <label>最低營收(篩雜訊) <input type="number" id="rankMinRevenue" value="0" style="width:90px"></label>
           <input type="text" class="search-box" id="rankSearch" placeholder="搜尋商品/品牌名稱...">
         </div>

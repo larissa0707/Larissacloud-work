@@ -25,6 +25,8 @@
   var charts = {};
   var rankSort = { col: 'amount', dir: 'desc' };
   var expandedBrands = {}; // brand -> expanded in ranking table
+  // 排行榜的通路選擇：mode 是大分類快捷；選了個別通路就變 custom
+  var rankCh = { mode: 'all', picked: {} };
   var overviewRange = 'all';
   var overviewCustomStart = null, overviewCustomEnd = null;
   var platforms = []; // [{id, name, commissionPct, idHeader, priceCols, rows:[{product,id,prices,note}]}]
@@ -424,12 +426,11 @@
     return records.filter(function (r) {
       if (opts.startIdx !== undefined && ymToIndex(r.ym) < opts.startIdx) return false;
       if (opts.endIdx !== undefined && ymToIndex(r.ym) > opts.endIdx) return false;
+      if (getChannelType(r.channel) === 'excluded') return false;
+      // 指定通路時以指定的為準，忽略大分類
+      if (opts.channels) return !!opts.channels[r.channel];
       if (opts.channelType && opts.channelType !== 'all') {
-        var t = getChannelType(r.channel);
-        if (t === 'excluded') return false;
-        if (t !== opts.channelType) return false;
-      } else {
-        if (getChannelType(r.channel) === 'excluded') return false;
+        if (getChannelType(r.channel) !== opts.channelType) return false;
       }
       return true;
     });
@@ -721,9 +722,117 @@
     el('rankStart').onchange = renderRanking;
     el('rankEnd').onchange = renderRanking;
     el('rankGroupBy').onchange = renderRanking;
-    el('rankChannelType').onchange = renderRanking;
+    renderChannelPicker();
     el('rankMinRevenue').oninput = debounce(renderRanking, 250);
     el('rankSearch').oninput = debounce(renderRanking, 250);
+  }
+
+  // ---------- 排行榜的通路選擇器 ----------
+  // 依營收排序、排除「不計入」的通路
+  function channelsByRevenue() {
+    var map = {};
+    records.forEach(function (r) {
+      if (getChannelType(r.channel) === 'excluded') return;
+      map[r.channel] = (map[r.channel] || 0) + r.amount;
+    });
+    return Object.keys(map)
+      .map(function (name) { return { name: name, amount: map[name] }; })
+      .sort(function (a, b) { return b.amount - a.amount; });
+  }
+
+  function rankChannelOpts() {
+    if (rankCh.mode === 'custom') {
+      var picked = Object.keys(rankCh.picked).filter(function (k) { return rankCh.picked[k]; });
+      // 一個都沒勾等於沒篩選，避免整張表空掉
+      if (!picked.length) return { channelType: 'all', channels: null };
+      var set = {};
+      picked.forEach(function (k) { set[k] = true; });
+      return { channelType: 'all', channels: set };
+    }
+    return { channelType: rankCh.mode, channels: null };
+  }
+
+  function rankChannelLabel() {
+    if (rankCh.mode === 'ec') return '只看電商 ▾';
+    if (rankCh.mode === 'phys') return '只看實體／經銷 ▾';
+    if (rankCh.mode === 'custom') {
+      var picked = Object.keys(rankCh.picked).filter(function (k) { return rankCh.picked[k]; });
+      if (!picked.length) return '全部通路 ▾';
+      if (picked.length === 1) return picked[0] + ' ▾';
+      return '已選 ' + picked.length + ' 個通路 ▾';
+    }
+    return '全部通路 ▾';
+  }
+
+  function renderChannelPicker() {
+    var btn = el('rankChannelBtn');
+    btn.textContent = rankChannelLabel();
+    btn.title = rankChannelLabel();
+    btn.classList.toggle('ch-active', rankCh.mode !== 'all');
+
+    Array.prototype.forEach.call(document.querySelectorAll('#rankChannelPanel [data-chpreset]'), function (b) {
+      b.classList.toggle('active', rankCh.mode === b.getAttribute('data-chpreset'));
+    });
+
+    var q = (el('rankChannelSearch').value || '').trim().toLowerCase();
+    var list = channelsByRevenue().filter(function (c) {
+      return !q || c.name.toLowerCase().indexOf(q) !== -1;
+    });
+    var box = el('rankChannelList');
+    if (!list.length) { box.innerHTML = '<div class="ch-empty">找不到符合的通路</div>'; return; }
+    box.innerHTML = list.slice(0, 400).map(function (c) {
+      var checked = rankCh.mode === 'custom' && rankCh.picked[c.name] ? ' checked' : '';
+      return '<label class="ch-row"><input type="checkbox" data-chname="' + escapeHtml(c.name).replace(/"/g, '&quot;') + '"' + checked + '>' +
+        '<span class="ch-name" title="' + escapeHtml(c.name).replace(/"/g, '&quot;') + '">' + escapeHtml(c.name) + '</span>' +
+        '<span class="ch-amt">$' + fmtMoney(c.amount) + '</span></label>';
+    }).join('');
+    Array.prototype.forEach.call(box.querySelectorAll('input[data-chname]'), function (cb) {
+      cb.onchange = function () {
+        var name = cb.getAttribute('data-chname');
+        if (rankCh.mode !== 'custom') { rankCh.mode = 'custom'; rankCh.picked = {}; }
+        rankCh.picked[name] = cb.checked;
+        renderChannelPicker();
+        renderRanking();
+      };
+    });
+  }
+
+  function setupChannelPicker() {
+    var panel = el('rankChannelPanel');
+    el('rankChannelBtn').onclick = function (e) {
+      e.stopPropagation();
+      panel.hidden = !panel.hidden;
+      if (!panel.hidden) renderChannelPicker();
+    };
+    el('rankChannelDone').onclick = function () { panel.hidden = true; };
+    panel.onclick = function (e) { e.stopPropagation(); };
+    // 點面板外面就收起來
+    document.addEventListener('click', function () { panel.hidden = true; });
+
+    Array.prototype.forEach.call(panel.querySelectorAll('[data-chpreset]'), function (b) {
+      b.onclick = function () {
+        rankCh.mode = b.getAttribute('data-chpreset');
+        rankCh.picked = {};
+        renderChannelPicker();
+        renderRanking();
+      };
+    });
+    el('rankChannelSearch').oninput = debounce(renderChannelPicker, 200);
+    el('rankChannelAll').onclick = function () {
+      var q = (el('rankChannelSearch').value || '').trim().toLowerCase();
+      rankCh.mode = 'custom';
+      channelsByRevenue().forEach(function (c) {
+        if (!q || c.name.toLowerCase().indexOf(q) !== -1) rankCh.picked[c.name] = true;
+      });
+      renderChannelPicker();
+      renderRanking();
+    };
+    el('rankChannelNone').onclick = function () {
+      rankCh.mode = 'all';
+      rankCh.picked = {};
+      renderChannelPicker();
+      renderRanking();
+    };
   }
 
   function growthCell(growth) {
@@ -745,13 +854,13 @@
     var prevE = sIdx - 1, prevS = sIdx - n;
     var noBaseline = sIdx <= dataMinIdx;
 
-    var channelType = el('rankChannelType').value;
+    var chOpts = rankChannelOpts();
     var groupBy = el('rankGroupBy').value;
     var minRevenue = Number(el('rankMinRevenue').value) || 0;
     var search = (el('rankSearch').value || '').trim().toLowerCase();
 
-    var curRecs = filterRecords({ startIdx: sIdx, endIdx: eIdx, channelType: channelType });
-    var prevRecs = filterRecords({ startIdx: prevS, endIdx: prevE, channelType: channelType });
+    var curRecs = filterRecords({ startIdx: sIdx, endIdx: eIdx, channelType: chOpts.channelType, channels: chOpts.channels });
+    var prevRecs = filterRecords({ startIdx: prevS, endIdx: prevE, channelType: chOpts.channelType, channels: chOpts.channels });
     var curMap = sumBy(curRecs, function (r) { return groupKeyOf(r, groupBy); });
     var prevMap = sumBy(prevRecs, function (r) { return groupKeyOf(r, groupBy); });
 
@@ -1464,6 +1573,7 @@
     el('winbackSearch').oninput = debounce(renderWinback, 250);
     el('githubSyncBtn').onclick = syncToGithub;
     el('githubTokenBtn').onclick = setupTokenFlow;
+    setupChannelPicker();
 
     loadPlatforms();
     renderCampaignTab();

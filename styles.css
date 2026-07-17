@@ -259,6 +259,67 @@ select.bucket-select {
   .two-col { grid-template-columns: 1fr; }
 }
 
+/* 通路選擇器（排行榜） */
+.ch-picker { position: relative; }
+.ch-btn {
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--text);
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ch-btn:hover { border-color: var(--accent); color: var(--accent); }
+.ch-btn.ch-active { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.ch-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 30;
+  width: 320px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(20, 25, 40, .14);
+  padding: 12px;
+}
+.ch-presets { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
+.ch-tools { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; }
+.ch-tools .search-box { flex: 1; min-width: 0; }
+.ch-mini {
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ch-mini:hover { color: var(--accent); border-color: var(--accent); }
+.ch-list { max-height: 260px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; }
+.ch-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 9px;
+  font-size: 13px;
+  cursor: pointer;
+  border-bottom: 1px solid #f1f3f6;
+}
+.ch-row:last-child { border-bottom: 0; }
+.ch-row:hover { background: var(--accent-soft); }
+.ch-row input { flex: 0 0 auto; }
+.ch-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ch-amt { flex: 0 0 auto; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.ch-foot { margin-top: 10px; text-align: right; }
+.ch-empty { padding: 16px; text-align: center; color: var(--muted); font-size: 12px; }
+
 .growth-up { color: var(--good); font-weight: 600; }
 .growth-down { color: var(--bad); font-weight: 600; }
 
