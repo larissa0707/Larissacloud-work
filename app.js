@@ -126,8 +126,25 @@
 
   function handleAuthFailure(statusEl) {
     localStorage.removeItem(LS_GH_TOKEN);
-    statusEl.textContent = '❌ 授權碼無效';
-    alert('授權碼(Token)無效或沒有寫入權限。\n\n請再按一次「☁️ 同步到GitHub」，重新貼上授權碼，注意：\n1. 要貼完整（開頭 github_pat_，結尾不要漏字）\n2. 前後不要有多餘空白\n3. 若還是不行，回GitHub重新產生一把，確認 Contents 設為 Read and write');
+    statusEl.textContent = '❌ Token 無效，請按「🔑 Token」重設';
+    alert('這台裝置的 GitHub Token 無效或已失效（例如你在 GitHub 重新產生過）。\n\n已清除舊的。請按右上角「🔑 Token」貼上新的，再按一次「☁️ 同步到GitHub」。\n\n注意：\n1. 要貼完整（開頭 github_pat_，結尾不要漏字）\n2. 前後不要有多餘空白\n3. 產生時 Contents 要設為 Read and write');
+  }
+
+  function setupTokenFlow() {
+    var existing = localStorage.getItem(LS_GH_TOKEN);
+    var msg = existing
+      ? '這台裝置目前已設定 Token。要換成新的請直接貼上（留空按確定＝清除，之後這台就只能看資料、不能同步）：'
+      : '貼上你的 GitHub Personal Access Token（開頭通常是 github_pat_）。\n只會存在這台裝置，不會給別人。\n\n只有需要「上傳資料」的裝置才需要設定；只看資料的裝置不用。';
+    var entered = prompt(msg, '');
+    if (entered === null) return;
+    var t = entered.trim();
+    if (!t) {
+      localStorage.removeItem(LS_GH_TOKEN);
+      el('githubSyncStatus').textContent = '已清除這台裝置的 Token';
+      return;
+    }
+    localStorage.setItem(LS_GH_TOKEN, t);
+    el('githubSyncStatus').textContent = '✅ Token 已儲存，可以按「☁️ 同步到GitHub」了';
   }
 
   async function ghErrorMsg(resp) {
@@ -145,12 +162,14 @@
       var content = utf8ToBase64(JSON.stringify(payload));
 
       var refResp = await ghApi('/git/refs/heads/main', token);
-      if (!refResp.ok) throw new Error('讀取分支失敗 (' + refResp.status + ')');
+      if (refResp.status === 401 || refResp.status === 403) { handleAuthFailure(statusEl); return; }
+      if (!refResp.ok) throw new Error('讀取分支失敗 (' + refResp.status + ') ' + (await ghErrorMsg(refResp)));
       var refData = await refResp.json();
       var commitSha = refData.object.sha;
 
       var commitResp = await ghApi('/git/commits/' + commitSha, token);
-      if (!commitResp.ok) throw new Error('讀取commit失敗 (' + commitResp.status + ')');
+      if (commitResp.status === 401 || commitResp.status === 403) { handleAuthFailure(statusEl); return; }
+      if (!commitResp.ok) throw new Error('讀取commit失敗 (' + commitResp.status + ') ' + (await ghErrorMsg(commitResp)));
       var commitData = await commitResp.json();
       var baseTreeSha = commitData.tree.sha;
 
@@ -1431,6 +1450,7 @@
     el('winbackMinIdleDays').oninput = debounce(renderWinback, 250);
     el('winbackSearch').oninput = debounce(renderWinback, 250);
     el('githubSyncBtn').onclick = syncToGithub;
+    el('githubTokenBtn').onclick = setupTokenFlow;
 
     loadPlatforms();
     renderCampaignTab();
