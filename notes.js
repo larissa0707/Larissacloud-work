@@ -66,6 +66,10 @@
     return fetch('https://api.github.com/repos/' + GH_OWNER + '/' + GH_REPO + path, finalOpts);
   }
 
+  async function ghErrorMsg(resp) {
+    try { var j = await resp.json(); return j.message || JSON.stringify(j); } catch (e) { return ''; }
+  }
+
   async function syncNotesToGithub() {
     var statusEl = el('nt-savedHint');
     var token = getGithubToken(false);
@@ -76,12 +80,14 @@
       var content = utf8ToBase64(JSON.stringify(payload));
 
       var refResp = await ghApi('/git/refs/heads/main', token);
-      if (!refResp.ok) throw new Error('讀取分支失敗 (' + refResp.status + ')');
+      if (refResp.status === 401 || refResp.status === 403) { return authFail(statusEl); }
+      if (!refResp.ok) throw new Error('讀取分支失敗 (' + refResp.status + ') ' + (await ghErrorMsg(refResp)));
       var refData = await refResp.json();
       var commitSha = refData.object.sha;
 
       var commitResp = await ghApi('/git/commits/' + commitSha, token);
-      if (!commitResp.ok) throw new Error('讀取commit失敗 (' + commitResp.status + ')');
+      if (commitResp.status === 401 || commitResp.status === 403) { return authFail(statusEl); }
+      if (!commitResp.ok) throw new Error('讀取commit失敗 (' + commitResp.status + ') ' + (await ghErrorMsg(commitResp)));
       var commitData = await commitResp.json();
       var baseTreeSha = commitData.tree.sha;
 
@@ -90,7 +96,7 @@
         body: JSON.stringify({ content: content, encoding: 'base64' })
       });
       if (blobResp.status === 401 || blobResp.status === 403) { return authFail(statusEl); }
-      if (!blobResp.ok) throw new Error('建立blob失敗 (' + blobResp.status + ')');
+      if (!blobResp.ok) throw new Error('建立blob失敗 (' + blobResp.status + ') ' + (await ghErrorMsg(blobResp)));
       var blobData = await blobResp.json();
 
       var treeResp = await ghApi('/git/trees', token, {
@@ -98,7 +104,7 @@
         body: JSON.stringify({ base_tree: baseTreeSha, tree: [{ path: GH_NOTES_PATH, mode: '100644', type: 'blob', sha: blobData.sha }] })
       });
       if (treeResp.status === 401 || treeResp.status === 403) { return authFail(statusEl); }
-      if (!treeResp.ok) throw new Error('建立tree失敗 (' + treeResp.status + ')');
+      if (!treeResp.ok) throw new Error('建立tree失敗 (' + treeResp.status + ') ' + (await ghErrorMsg(treeResp)));
       var treeData = await treeResp.json();
 
       var newCommitResp = await ghApi('/git/commits', token, {
@@ -106,15 +112,15 @@
         body: JSON.stringify({ message: '同步筆記 ' + new Date().toLocaleString('zh-TW'), tree: treeData.sha, parents: [commitSha] })
       });
       if (newCommitResp.status === 401 || newCommitResp.status === 403) { return authFail(statusEl); }
-      if (!newCommitResp.ok) throw new Error('建立commit失敗 (' + newCommitResp.status + ')');
+      if (!newCommitResp.ok) throw new Error('建立commit失敗 (' + newCommitResp.status + ') ' + (await ghErrorMsg(newCommitResp)));
       var newCommitData = await newCommitResp.json();
 
       var updateRefResp = await ghApi('/git/refs/heads/main', token, {
         method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sha: newCommitData.sha })
+        body: JSON.stringify({ sha: newCommitData.sha, force: true })
       });
       if (updateRefResp.status === 401 || updateRefResp.status === 403) { return authFail(statusEl); }
-      if (!updateRefResp.ok) throw new Error('更新分支失敗 (' + updateRefResp.status + ')');
+      if (!updateRefResp.ok) throw new Error('更新分支失敗 (' + updateRefResp.status + ') ' + (await ghErrorMsg(updateRefResp)));
 
       statusEl.textContent = '✅ 筆記已同步 ' + new Date().toLocaleString('zh-TW');
     } catch (e) {
@@ -124,8 +130,8 @@
   }
   function authFail(statusEl) {
     localStorage.removeItem(LS_GH_TOKEN);
-    statusEl.textContent = '❌ 授權碼無效';
-    alert('授權碼(Token)無效或沒有寫入權限，請再按一次同步鍵重新貼上授權碼（Contents 需為 Read and write）。');
+    statusEl.textContent = '❌ Token 無效，請按右上角「🔑 Token」重設';
+    alert('這台裝置的 GitHub Token 無效或已失效（例如你在 GitHub 重新產生過）。\n\n已清除舊的。請按右上角「🔑 Token」貼上新的，再按一次同步。\n\n（產生 Token 時 Contents 要設為 Read and write）');
   }
 
   async function tryLoadRemoteNotes() {
