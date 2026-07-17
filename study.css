@@ -102,3 +102,29 @@
 #page-study .sq-footnote { font-size: 12px; color: var(--sq-mut); margin-top: 16px; line-height: 1.6; }
 #page-study .sq-empty { padding: 32px; text-align: center; color: var(--sq-mut); font-size: 14px; }
 #page-study button:focus-visible, #page-study [tabindex]:focus-visible, #page-study input:focus-visible { outline: 2px solid var(--sq-indigo); outline-offset: 2px; }
+
+/* ── 階梯測驗 ── */
+#page-study .sq-steps { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+#page-study .sq-step { padding: 5px 10px; border-radius: 999px; border: 1px solid var(--sq-line); background: var(--sq-card);
+  font-size: 12px; color: var(--sq-mut); cursor: pointer; white-space: nowrap; }
+#page-study .sq-step-cur { background: var(--sq-indigo); border-color: var(--sq-indigo); color: #fff; font-weight: 600; }
+#page-study .sq-step-done { border-color: var(--sq-lo); color: var(--sq-lo); }
+#page-study .sq-stagelist { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; font-size: 12px; color: var(--sq-mut); }
+#page-study .sq-chipm { padding: 3px 8px; border-radius: 6px; background: var(--sq-card); border: 1px solid var(--sq-line); font-size: 12px; color: var(--sq-ink); }
+#page-study .sq-chipm-ok { border-color: var(--sq-lo); color: var(--sq-lo); }
+
+/* ── 型號圖片 ── */
+#page-study .sq-cimgwrap { display: flex; justify-content: center; margin-bottom: 12px; }
+#page-study .sq-cimg { max-width: 100%; max-height: 190px; border-radius: 10px; object-fit: contain; }
+#page-study .sq-qimgwrap { display: flex; justify-content: center; margin: 4px 0 12px; }
+#page-study .sq-qimg { max-width: 100%; max-height: 160px; border-radius: 10px; object-fit: contain; }
+#page-study .sq-imgbar { display: flex; gap: 8px; justify-content: center; margin-top: 10px; }
+#page-study .sq-imgbar button { padding: 6px 12px; border-radius: 8px; border: 1px solid var(--sq-line); background: var(--sq-card);
+  font-size: 12px; color: var(--sq-mut); cursor: pointer; }
+#page-study .sq-imgbar button:hover { color: var(--sq-indigo); border-color: var(--sq-indigo); }
+#page-study .sq-brow { display: flex; gap: 8px; align-items: center; margin: 8px 0; flex-wrap: wrap; }
+#page-study .sq-bimgwrap { flex: 0 0 auto; }
+#page-study .sq-bimg { width: 68px; height: 68px; border-radius: 8px; object-fit: cover; border: 1px solid var(--sq-line); }
+#page-study .sq-bimgbtn { padding: 4px 9px; border-radius: 7px; border: 1px solid var(--sq-line); background: var(--sq-card);
+  font-size: 11px; color: var(--sq-mut); cursor: pointer; }
+#page-study .sq-bimgbtn:hover { color: var(--sq-indigo); border-color: var(--sq-indigo); }

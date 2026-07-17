@@ -59,6 +59,48 @@
   try { mastered = JSON.parse(localStorage.getItem("paipai_cfg_mastered") || "{}"); } catch (e) { mastered = {}; }
   var saveM = function () { try { localStorage.setItem("paipai_cfg_mastered", JSON.stringify(mastered)); } catch (e) { } };
 
+  // ── 型號圖片（WebP dataURL，存本機，可同步到 GitHub）──
+  var IMG_KEY = "paipai_cfg_images";
+  var images = {};
+  try { images = JSON.parse(localStorage.getItem(IMG_KEY) || "{}"); } catch (e) { images = {}; }
+  function saveImages() {
+    try { localStorage.setItem(IMG_KEY, JSON.stringify(images)); return true; }
+    catch (e) {
+      alert("圖片存不下了（瀏覽器容量已滿）。\n請先刪掉幾張圖片，或改用小一點的圖。");
+      return false;
+    }
+  }
+  // 壓成 WebP，避免塞爆瀏覽器容量
+  function fileToWebp(file, maxDim, quality) {
+    return new Promise(function (resolve, reject) {
+      var url = URL.createObjectURL(file);
+      var img = new Image();
+      img.onload = function () {
+        var w = img.naturalWidth, h = img.naturalHeight;
+        var scale = Math.min(1, maxDim / Math.max(w, h));
+        var cw = Math.max(1, Math.round(w * scale)), ch = Math.max(1, Math.round(h * scale));
+        var c = document.createElement("canvas");
+        c.width = cw; c.height = ch;
+        c.getContext("2d").drawImage(img, 0, 0, cw, ch);
+        URL.revokeObjectURL(url);
+        try { resolve(c.toDataURL("image/webp", quality)); }
+        catch (e) { reject(e); }
+      };
+      img.onerror = function () { URL.revokeObjectURL(url); reject(new Error("圖片讀取失敗")); };
+      img.src = url;
+    });
+  }
+  var imgTargetId = null;
+  function pickImageFor(id) {
+    imgTargetId = id;
+    var inp = document.getElementById("sq-imgInput");
+    inp.value = "";
+    inp.click();
+  }
+  function imgHTML(id, cls) {
+    return images[id] ? '<img class="' + cls + '" src="' + images[id] + '" alt="">' : "";
+  }
+
   var pool = function () {
     return DATA
       .filter(function (d) { return S.cat === "全部" || d.cat === S.cat; })
@@ -68,6 +110,60 @@
 
   var fOrder = [], fIdx = 0, fFlip = false;
   var qCur = null, qPicked = null, qScore = { ok: 0, n: 0 };
+
+  // ── 階梯測驗：每 5 台一階，每台的 方案/前鏡頭/後鏡頭 三題都答對才算過 ──
+  var STAGE_SIZE = 5;
+  var LFIELDS = [
+    { key: "chip", label: "方案", q: function (d) { return d.model + " 用什麼方案（晶片）？"; } },
+    { key: "front", label: "前鏡頭", q: function (d) { return d.model + " 的前鏡頭是？"; } },
+    { key: "rear", label: "後鏡頭", q: function (d) { return d.model + " 的後鏡頭是？"; } }
+  ];
+  var LKEY = "paipai_cfg_ladder";
+  var ladder = {};   // { "型號|欄位": true } 已答對的
+  try { ladder = JSON.parse(localStorage.getItem(LKEY) || "{}"); } catch (e) { ladder = {}; }
+  var saveL = function () { try { localStorage.setItem(LKEY, JSON.stringify(ladder)); } catch (e) { } };
+  var lStage = 0, lCur = null, lPicked = null;
+
+  function stages() {
+    var p = pool(), out = [];
+    for (var i = 0; i < p.length; i += STAGE_SIZE) out.push(p.slice(i, i + STAGE_SIZE));
+    return out;
+  }
+  function stageDone(st) {
+    return st.every(function (d) {
+      return LFIELDS.every(function (f) { return ladder[d.id + "|" + f.key]; });
+    });
+  }
+  // 目前這一階還沒答對的 (型號, 欄位) 組合
+  function lPending() {
+    var st = stages()[lStage] || [], out = [];
+    st.forEach(function (d) {
+      LFIELDS.forEach(function (f) { if (!ladder[d.id + "|" + f.key]) out.push({ d: d, f: f }); });
+    });
+    return out;
+  }
+  function genLQ() {
+    var pend = lPending();
+    if (!pend.length) { lCur = null; return; }
+    var pick = pend[Math.random() * pend.length | 0];
+    var d = pick.d, f = pick.f, ans = d[f.key];
+    // 誘答從全部型號取，才有鑑別度
+    var others = shuffle(pool().map(function (x) { return x[f.key]; })
+      .filter(function (x) { return x && x !== ans; }));
+    var uniq = [];
+    for (var i = 0; i < others.length; i++) {
+      if (uniq.indexOf(others[i]) === -1) uniq.push(others[i]);
+      if (uniq.length >= 3) break;
+    }
+    lCur = { d: d, f: f, ans: ans, opts: shuffle([ans].concat(uniq)) };
+    lPicked = null;
+  }
+  // 跳到第一個還沒過關的階
+  function firstUnfinishedStage() {
+    var all = stages();
+    for (var i = 0; i < all.length; i++) { if (!stageDone(all[i])) return i; }
+    return all.length ? all.length - 1 : 0;
+  }
 
   function esc(s) { return (s == null ? "" : String(s)).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
 
@@ -83,6 +179,7 @@
     renderFilters();
     var v = document.getElementById("sq-view");
     if (S.mode === "card") v.innerHTML = cardHTML();
+    else if (S.mode === "ladder") v.innerHTML = ladderHTML();
     else if (S.mode === "quiz") v.innerHTML = quizHTML();
     else if (S.mode === "browse") v.innerHTML = browseHTML();
     else if (S.mode === "glossary") v.innerHTML = glossaryHTML();
@@ -112,6 +209,7 @@
       '</div>'
     ) : (
       '<div class="sq-front">' +
+      (images[d.id] ? '<div class="sq-cimgwrap">' + imgHTML(d.id, "sq-cimg") + '</div>' : '') +
       '<div class="sq-model">' + esc(d.model) + '</div>' +
       (d.alias ? '<div class="sq-alias">' + esc(d.alias) + '</div>' : '') +
       (d.screen ? '<div class="sq-screen">' + esc(d.screen) + '</div>' : '') +
@@ -142,6 +240,10 @@
       '<div class="sq-nav">' +
       '<button data-sqact="prev">← 上一張</button>' +
       '<button data-sqact="next">下一張 →</button>' +
+      '</div>' +
+      '<div class="sq-imgbar">' +
+      '<button data-sqact="addimg" data-sqid="' + esc(d.id) + '">' + (images[d.id] ? "🖼 換張圖片" : "🖼 加入圖片") + '</button>' +
+      (images[d.id] ? '<button data-sqact="delimg" data-sqid="' + esc(d.id) + '">刪除圖片</button>' : '') +
       '</div>'
     );
   }
@@ -162,7 +264,7 @@
       .filter(function (x) { return x && x !== ans && x !== "無" && x !== "—"; }));
     var uniq = [];
     for (var i = 0; i < others.length; i++) { if (uniq.indexOf(others[i]) === -1) uniq.push(others[i]); if (uniq.length >= 3) break; }
-    qCur = { ask: f.label, q: f.q(item), ans: ans, opts: shuffle([ans].concat(uniq)) };
+    qCur = { ask: f.label, q: f.q(item), ans: ans, opts: shuffle([ans].concat(uniq)), item: item };
     qPicked = null;
   }
   function quizHTML() {
@@ -193,10 +295,85 @@
       '<div class="sq-panel sq-qpanel">' +
       '<div class="sq-qask">問 · ' + qCur.ask + '</div>' +
       '<div class="sq-qq">' + esc(qCur.q) + '</div>' +
+      // 「哪一台用XX方案」的題目附圖會直接洩答案，所以只有問某台規格時才附圖
+      (qCur.item && qCur.ask !== "型號" && images[qCur.item.id] ? '<div class="sq-qimgwrap">' + imgHTML(qCur.item.id, "sq-qimg") + '</div>' : '') +
       opts +
       foot +
       '</div>'
     );
+  }
+
+  function ladderHTML() {
+    var all = stages();
+    if (!all.length) return '<div class="sq-panel sq-empty">此範圍沒有型號，請放寬篩選條件。</div>';
+    if (pool().length < 4) return '<div class="sq-panel sq-empty">此範圍題目不足（至少需 4 台）才能出選項，請放寬篩選。</div>';
+    if (lStage >= all.length) lStage = all.length - 1;
+
+    var st = all[lStage];
+    var total = st.length * LFIELDS.length;
+    var done = total - lPending().length;
+    var allDone = all.every(stageDone);
+
+    // 階梯進度條
+    var steps = all.map(function (s, i) {
+      var cls = stageDone(s) ? "sq-step sq-step-done" : (i === lStage ? "sq-step sq-step-cur" : "sq-step");
+      var lock = (i > lStage && !stageDone(s)) ? " 🔒" : (stageDone(s) ? " ✓" : "");
+      return '<button class="' + cls + '" data-sqstage="' + i + '">第' + (i + 1) + '階' + lock + '</button>';
+    }).join("");
+
+    var header =
+      '<div class="sq-meta">' +
+      '<span>第 <b style="color:var(--sq-indigo)">' + (lStage + 1) + '</b> / ' + all.length + ' 階 · 本階進度 ' + done + '/' + total + '</span>' +
+      '<button data-sqact="resetladder">整個階梯歸零</button>' +
+      '</div>' +
+      '<div class="sq-steps">' + steps + '</div>' +
+      '<div class="sq-stagelist">本階型號：' + st.map(function (d) {
+        var ok = LFIELDS.every(function (f) { return ladder[d.id + "|" + f.key]; });
+        return '<span class="sq-chipm' + (ok ? " sq-chipm-ok" : "") + '">' + esc(d.model) + (ok ? " ✓" : "") + '</span>';
+      }).join("") + '</div>';
+
+    if (!lCur) genLQ();
+
+    // 本階全過
+    if (!lCur) {
+      var nextBtn = allDone
+        ? '<button class="sq-big" data-sqact="gorandom">全部階梯完成！去隨機測驗 →</button>'
+        : '<button class="sq-big" data-sqact="nextstage">進入第 ' + (lStage + 2) + ' 階 →</button>';
+      return header +
+        '<div class="sq-panel sq-empty" style="padding:28px 16px">' +
+        '<div style="font-size:34px;margin-bottom:8px">🎉</div>' +
+        '<div style="font-size:16px;font-weight:600;margin-bottom:4px">第 ' + (lStage + 1) + ' 階過關！</div>' +
+        '<div style="color:var(--sq-mut);font-size:13px;margin-bottom:16px">這 ' + st.length + ' 台的方案／前鏡頭／後鏡頭都答對了</div>' +
+        nextBtn +
+        '</div>';
+    }
+
+    var d = lCur.d;
+    var opts = lCur.opts.map(function (o) {
+      var cls = "sq-opt";
+      if (lPicked) {
+        if (o === lCur.ans) cls = "sq-opt sq-correct";
+        else if (o === lPicked) cls = "sq-opt sq-wrong";
+        else cls = "sq-opt sq-dim";
+      }
+      return '<button class="' + cls + '" data-sqlopt="' + esc(o) + '" ' + (lPicked ? "disabled" : "") + '>' + esc(o) + '</button>';
+    }).join("");
+    var foot = lPicked ? (
+      '<div class="sq-qfoot">' +
+      '<span style="font-size:14px;font-weight:600;color:' + (lPicked === lCur.ans ? "var(--sq-lo)" : "var(--sq-hi)") + '">' +
+      (lPicked === lCur.ans ? "答對 ✓ 這題過了" : "答錯，正解：" + esc(lCur.ans) + "（這題稍後會再出現）") + '</span>' +
+      '<button class="sq-btn sq-dark" data-sqact="nextlq">下一題 →</button>' +
+      '</div>'
+    ) : "";
+
+    return header +
+      '<div class="sq-panel sq-qpanel">' +
+      '<div class="sq-qask">問 · ' + lCur.f.label + '</div>' +
+      '<div class="sq-qq">' + esc(lCur.f.q(d)) + '</div>' +
+      (images[d.id] ? '<div class="sq-qimgwrap">' + imgHTML(d.id, "sq-qimg") + '</div>' : '') +
+      opts +
+      foot +
+      '</div>';
   }
 
   function browseHTML() {
@@ -216,6 +393,11 @@
             '<div class="sq-bhead">' +
             '<span class="sq-bmodel">' + esc(d.model) + ' <span style="font-size:12px;font-weight:400;color:var(--sq-mut)">' + esc(d.alias) + '</span></span>' +
             '<span class="sq-bchip">' + esc(d.chip) + '</span>' +
+            '</div>' +
+            '<div class="sq-brow">' +
+            (images[d.id] ? '<div class="sq-bimgwrap">' + imgHTML(d.id, "sq-bimg") + '</div>' : '') +
+            '<button class="sq-bimgbtn" data-sqact="addimg" data-sqid="' + esc(d.id) + '">' + (images[d.id] ? "換圖" : "🖼 加圖") + '</button>' +
+            (images[d.id] ? '<button class="sq-bimgbtn" data-sqact="delimg" data-sqid="' + esc(d.id) + '">刪圖</button>' : '') +
             '</div>' +
             '<div class="sq-bgrid">' +
             '<span>前：' + esc(d.front) + '</span>' +
@@ -364,6 +546,18 @@
         else if (a === "yes" || a === "no") { mastered[fOrder[fIdx]] = (a === "yes"); saveM(); fFlip = false; fIdx = (fIdx + 1) % fOrder.length; }
         else if (a === "nextq") { genQ(); }
         else if (a === "resetscore") { qScore = { ok: 0, n: 0 }; }
+        else if (a === "nextlq") { genLQ(); }
+        else if (a === "nextstage") { lStage++; lCur = null; lPicked = null; }
+        else if (a === "gorandom") { S.mode = "quiz"; genQ(); }
+        else if (a === "resetladder") {
+          if (!confirm("確定要把整個階梯的進度歸零嗎？")) return;
+          ladder = {}; saveL(); lStage = 0; lCur = null; lPicked = null;
+        }
+        else if (a === "addimg") { pickImageFor(el.dataset.sqid); return; }
+        else if (a === "delimg") {
+          if (!confirm("確定要刪掉這張圖片嗎？")) return;
+          delete images[el.dataset.sqid]; saveImages();
+        }
         render();
       });
     });
@@ -375,18 +569,66 @@
         render();
       });
     });
+    v.querySelectorAll("[data-sqlopt]").forEach(function (el) {
+      el.addEventListener("click", function () {
+        if (lPicked || !lCur) return;
+        lPicked = el.dataset.sqlopt;
+        // 答對才標記過關；答錯就留在待答清單裡，之後會再被抽到
+        if (lPicked === lCur.ans) { ladder[lCur.d.id + "|" + lCur.f.key] = true; saveL(); }
+        render();
+      });
+    });
+    v.querySelectorAll("[data-sqstage]").forEach(function (el) {
+      el.addEventListener("click", function () {
+        var i = +el.dataset.sqstage;
+        var all = stages();
+        // 只能跳到已過關的階，或目前這一階（避免跳過還沒背的）
+        if (i > lStage && !stageDone(all[i])) { alert("這一階還沒解鎖，先把前面的階梯過完喔。"); return; }
+        lStage = i; lCur = null; lPicked = null;
+        render();
+      });
+    });
+  }
+
+  // 篩選條件一改，階梯的分組就變了，要重新定位到第一個沒過的階
+  function refilter() {
+    fOrder = [];
+    genQ();
+    lStage = firstUnfinishedStage();
+    lCur = null; lPicked = null;
   }
 
   document.querySelectorAll("#page-study [data-sqcat]").forEach(function (b) {
-    b.onclick = function () { S.cat = b.dataset.sqcat; fOrder = []; genQ(); render(); };
+    b.onclick = function () { S.cat = b.dataset.sqcat; refilter(); render(); };
   });
   document.querySelectorAll("#page-study [data-sqtier]").forEach(function (b) {
-    b.onclick = function () { S.tier = b.dataset.sqtier; fOrder = []; genQ(); render(); };
+    b.onclick = function () { S.tier = b.dataset.sqtier; refilter(); render(); };
   });
   document.querySelectorAll("#page-study [data-sqmode]").forEach(function (b) {
-    b.onclick = function () { S.mode = b.dataset.sqmode; render(); };
+    b.onclick = function () {
+      S.mode = b.dataset.sqmode;
+      if (S.mode === "ladder") { lStage = firstUnfinishedStage(); lCur = null; lPicked = null; }
+      render();
+    };
   });
-  document.getElementById("sq-disc").onchange = function (e) { S.disc = e.target.checked; fOrder = []; genQ(); render(); };
+  document.getElementById("sq-disc").onchange = function (e) { S.disc = e.target.checked; refilter(); render(); };
 
+  document.getElementById("sq-imgInput").onchange = async function (e) {
+    var file = e.target.files[0];
+    var id = imgTargetId;
+    imgTargetId = null;
+    if (!file || !id) return;
+    try {
+      var dataUrl = await fileToWebp(file, 800, 0.75);
+      images[id] = dataUrl;
+      if (!saveImages()) delete images[id];
+      render();
+    } catch (err) {
+      console.error("圖片處理失敗", err);
+      alert("這張圖片讀不進來：" + err.message);
+    }
+  };
+
+  lStage = firstUnfinishedStage();
   render();
 })();
